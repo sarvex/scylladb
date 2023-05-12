@@ -18,14 +18,14 @@ def get(config, key):
     try:
         val = cfg[key]
     except KeyError:
-        print("key '%s' not found" % key)
+        print(f"key '{key}' not found")
         sys.exit(1)
     if isinstance(val, list):
         for v in val:
-            print("%s" % v)
+            print(f"{v}")
     elif isinstance(val, dict):
         for k, v in list(val.items()):
-            print("%s:%s" % (k, v))
+            print(f"{k}:{v}")
     else:
         print(val)
 

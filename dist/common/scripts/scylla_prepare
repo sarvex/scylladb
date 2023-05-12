@@ -29,11 +29,10 @@ def cpu_mask_is_zero(cpu_mask):
     :param cpu_mask: hwloc-calc generated CPU mask
     :return: True if mask is zero, False otherwise
     """
-    for cur_cpu_mask in cpu_mask.split(','):
-        if cur_cpu_mask and int(cur_cpu_mask, 16) != 0:
-            return False
-
-    return True
+    return not any(
+        cur_cpu_mask and int(cur_cpu_mask, 16) != 0
+        for cur_cpu_mask in cpu_mask.split(',')
+    )
 
 def get_irq_cpu_mask():
     """
@@ -71,8 +70,7 @@ def get_irq_cpu_mask():
         raise Exception('/etc/scylla.d/cpuset.conf not found')
     cur_cpuset = get_cur_cpuset()
 
-    hwloc_cmd = "/opt/scylladb/bin/hwloc-calc --pi all {}".\
-        format(" ".join(['~PU:{}'.format(c) for c in cur_cpuset.split(",")]))
+    hwloc_cmd = f"""/opt/scylladb/bin/hwloc-calc --pi all {" ".join([f'~PU:{c}' for c in cur_cpuset.split(",")])}"""
 
     irq_cpu_mask = out(hwloc_cmd).strip()
 
@@ -107,30 +105,30 @@ def create_perftune_conf(cfg):
     if cfg.has_option('DISABLE_WRITEBACK_CACHE') and cfg.get('DISABLE_WRITEBACK_CACHE') == 'yes':
         params += ' --write-back-cache=false'
 
-    if len(params) > 0:
-        if os.path.exists('/etc/scylla.d/perftune.yaml'):
-            return True
-
-        params += ' --dump-options-file'
-        yaml = out('/opt/scylladb/scripts/perftune.py ' + params)
-        with open('/etc/scylla.d/perftune.yaml', 'w') as f:
-            f.write(yaml)
-        os.chmod('/etc/scylla.d/perftune.yaml', 0o644)
-        return True
-    else:
+    if not params:
         return False
+    if os.path.exists('/etc/scylla.d/perftune.yaml'):
+        return True
+
+    params += ' --dump-options-file'
+    yaml = out(f'/opt/scylladb/scripts/perftune.py {params}')
+    with open('/etc/scylla.d/perftune.yaml', 'w') as f:
+        f.write(yaml)
+    os.chmod('/etc/scylla.d/perftune.yaml', 0o644)
+    return True
 
 def verify_cpu():
-    if platform.machine() == 'x86_64':
-        needed_flags = set(['sse4_2', 'pclmulqdq'])
-        for line in open('/proc/cpuinfo'):
-            if line.startswith('flags'):
-                actual_flags = set(line.split()[2:])
-                missing_flags = needed_flags - actual_flags
-                if len(missing_flags) > 0:
-                    print(f"ERROR: You will not be able to run Scylla on this machine because its CPU lacks the following features: {' '.join(missing_flags)}")
-                    print('\nIf this is a virtual machine, please update its CPU feature configuration or upgrade to a newer hypervisor.')
-                    sys.exit(1)
+    if platform.machine() != 'x86_64':
+        return
+    needed_flags = {'sse4_2', 'pclmulqdq'}
+    for line in open('/proc/cpuinfo'):
+        if line.startswith('flags'):
+            actual_flags = set(line.split()[2:])
+            missing_flags = needed_flags - actual_flags
+            if len(missing_flags) > 0:
+                print(f"ERROR: You will not be able to run Scylla on this machine because its CPU lacks the following features: {' '.join(missing_flags)}")
+                print('\nIf this is a virtual machine, please update its CPU feature configuration or upgrade to a newer hypervisor.')
+                sys.exit(1)
 
 if __name__ == '__main__':
     verify_cpu()
@@ -172,7 +170,11 @@ if __name__ == '__main__':
             sys.exit(1)
         try:
             if res:
-                run("{} --options-file /etc/scylla.d/perftune.yaml".format(perftune_base_command()), shell=True, check=True)
+                run(
+                    f"{perftune_base_command()} --options-file /etc/scylla.d/perftune.yaml",
+                    shell=True,
+                    check=True,
+                )
         except Exception as e:
             print(f'Exception occurred while tuning system using perftune.yaml:\n')
             traceback.print_exc()

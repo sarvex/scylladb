@@ -14,7 +14,9 @@ def find_cassandra():
     cassandra = os.getenv('CASSANDRA', 'cassandra')
     cassandra_path = shutil.which(cassandra)
     if cassandra_path is None:
-        print("Error: Can't find {}. Please set the CASSANDRA environment variable to the path of the Cassandra startup script.".format(cassandra))
+        print(
+            f"Error: Can't find {cassandra}. Please set the CASSANDRA environment variable to the path of the Cassandra startup script."
+        )
         exit(1)
     return cassandra_path
 
@@ -33,11 +35,7 @@ def java_major_version(java):
     version = re.search(r'"(\d+)\.(\d+).*"', out).groups()
     major = int(version[0])
     minor = int(version[1])
-    if major == 1:
-        # Return 8 for Java 1.8
-        return minor
-    else:
-        return major
+    return minor if major == 1 else major
 
 def find_java():
     # Look for the Java in one of several places known to host the Java
@@ -47,7 +45,7 @@ def find_java():
     for java in ['java', '/usr/lib/jvm/jre-11/bin/java', '/usr/lib/jvm/jre-1.8.0/bin/java']:
         try:
             version = java_major_version(java)
-            if version == 8 or version == 11:
+            if version in [8, 11]:
                 return java
         except:
             pass
@@ -65,26 +63,96 @@ def run_cassandra_cmd(pid, dir):
     confdir = os.path.join(dir, 'conf')
     os.mkdir(confdir)
     with open(os.path.join(confdir, 'cassandra.yaml'), 'w') as f:
-        print('hints_directory: ' + dir + '/hints\n' +
-              'data_file_directories:\n    - ' + dir + '/data\n' +
-              'commitlog_directory: ' + dir + '/commitlog\n' +
-              'saved_caches_directory: ' + dir + '/data/saved_caches\n' +
-              'commitlog_sync: periodic\n' +
-              'commitlog_sync_period_in_ms: 10000\n' +
-              'partitioner: org.apache.cassandra.dht.Murmur3Partitioner\n' +
-              'endpoint_snitch: SimpleSnitch\n' +
-              'seed_provider:\n    - class_name: org.apache.cassandra.locator.SimpleSeedProvider\n      parameters:\n          - seeds: "' + ip + '"\n' +
-              'listen_address: ' + ip + '\n' +
-              'start_native_transport: true\n' +
-              'auto_snapshot: false\n' +
-              'enable_sasi_indexes: true\n' +
-              'enable_user_defined_functions: true\n' +
-              'authenticator: PasswordAuthenticator\n' +
-              'authorizer: CassandraAuthorizer\n' +
-              'permissions_update_interval_in_ms: 100\n' +
-              'permissions_validity_in_ms: 100\n' +
-              'enable_materialized_views: true\n', file=f)
-    print('Booting Cassandra on ' + ip + ' in ' + dir + '...')
+        print(
+            (
+                (
+                    (
+                        (
+                            (
+                                (
+                                    (
+                                        (
+                                            (
+                                                (
+                                                    (
+                                                        (
+                                                            (
+                                                                (
+                                                                    (
+                                                                        (
+                                                                            (
+                                                                                (
+                                                                                    (
+                                                                                        (
+                                                                                            (
+                                                                                                (
+                                                                                                    (
+                                                                                                        (
+                                                                                                            (
+                                                                                                                (
+                                                                                                                    (
+                                                                                                                        (
+                                                                                                                            f'hints_directory: {dir}'
+                                                                                                                            + '/hints\n'
+                                                                                                                            + 'data_file_directories:\n    - '
+                                                                                                                        )
+                                                                                                                        + dir
+                                                                                                                    )
+                                                                                                                    + '/data\n'
+                                                                                                                )
+                                                                                                                + 'commitlog_directory: '
+                                                                                                            )
+                                                                                                            + dir
+                                                                                                        )
+                                                                                                        + '/commitlog\n'
+                                                                                                    )
+                                                                                                    + 'saved_caches_directory: '
+                                                                                                )
+                                                                                                + dir
+                                                                                            )
+                                                                                            + '/data/saved_caches\n'
+                                                                                        )
+                                                                                        + 'commitlog_sync: periodic\n'
+                                                                                    )
+                                                                                    + 'commitlog_sync_period_in_ms: 10000\n'
+                                                                                )
+                                                                                + 'partitioner: org.apache.cassandra.dht.Murmur3Partitioner\n'
+                                                                            )
+                                                                            + 'endpoint_snitch: SimpleSnitch\n'
+                                                                        )
+                                                                        + 'seed_provider:\n    - class_name: org.apache.cassandra.locator.SimpleSeedProvider\n      parameters:\n          - seeds: "'
+                                                                    )
+                                                                    + ip
+                                                                )
+                                                                + '"\n'
+                                                            )
+                                                            + 'listen_address: '
+                                                        )
+                                                        + ip
+                                                    )
+                                                    + '\n'
+                                                )
+                                                + 'start_native_transport: true\n'
+                                            )
+                                            + 'auto_snapshot: false\n'
+                                        )
+                                        + 'enable_sasi_indexes: true\n'
+                                    )
+                                    + 'enable_user_defined_functions: true\n'
+                                )
+                                + 'authenticator: PasswordAuthenticator\n'
+                            )
+                            + 'authorizer: CassandraAuthorizer\n'
+                        )
+                        + 'permissions_update_interval_in_ms: 100\n'
+                    )
+                    + 'permissions_validity_in_ms: 100\n'
+                )
+                + 'enable_materialized_views: true\n'
+            ),
+            file=f,
+        )
+    print(f'Booting Cassandra on {ip} in {dir}...')
     logsdir = os.path.join(dir, 'logs')
     os.mkdir(logsdir)
     # Cassandra creates some subdirectories on its own, but one it doesn't...
@@ -149,7 +217,7 @@ def run_cassandra_ssl_cmd(pid, dir):
     # The command and environment variables to run Cassandra are the same,
     return (cmd, env)
 
-print('Cassandra is: ' + cassandra + '.')
+print(f'Cassandra is: {cassandra}.')
 
 if '--ssl' in sys.argv:
     cmd = run_cassandra_ssl_cmd

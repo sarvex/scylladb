@@ -46,7 +46,7 @@ master_doc = "index"
 
 # General information about the project.
 project = "ScyllaDB Open Source"
-copyright = str(date.today().year) + ", ScyllaDB. All rights reserved."
+copyright = f"{str(date.today().year)}, ScyllaDB. All rights reserved."
 author = u"ScyllaDB Project Contributors"
 
 # List of patterns, relative to source directory, that match files and

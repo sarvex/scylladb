@@ -48,8 +48,8 @@ def test_select_default_order(cql, table_int_desc):
     assert reverse_rows == list(cql.execute(f'SELECT c FROM {table_int_desc} WHERE k = {k} ORDER BY c DESC'))
     # Repeat the same three assertions as above, adding a "limit" of N=3:
     N=3
-    rows = rows[0:N]
-    reverse_rows = reverse_rows[0:N]
+    rows = rows[:N]
+    reverse_rows = reverse_rows[:N]
     assert reverse_rows == list(cql.execute(f'SELECT c FROM {table_int_desc} WHERE k = {k} LIMIT {N}'))
     assert rows == list(cql.execute(f'SELECT c FROM {table_int_desc} WHERE k = {k} ORDER BY c ASC LIMIT {N}'))
     assert reverse_rows == list(cql.execute(f'SELECT c FROM {table_int_desc} WHERE k = {k} ORDER BY c DESC LIMIT {N}'))

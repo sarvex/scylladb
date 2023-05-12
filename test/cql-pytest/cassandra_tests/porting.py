@@ -36,49 +36,49 @@ def create_table(cql, keyspace, schema):
     if not previously_used_table_names:
         previously_used_table_names.append(unique_name())
     table_name = previously_used_table_names.pop()
-    table = keyspace + "." + table_name
-    cql.execute("CREATE TABLE " + table + " " + schema)
+    table = f"{keyspace}.{table_name}"
+    cql.execute(f"CREATE TABLE {table} {schema}")
     try:
         yield table
     finally:
-        cql.execute("DROP TABLE " + table)
+        cql.execute(f"DROP TABLE {table}")
         previously_used_table_names.append(table_name)
 
 @contextmanager
 def create_type(cql, keyspace, cmd):
-    type_name = keyspace + "." + unique_name()
-    cql.execute("CREATE TYPE " + type_name + " " + cmd)
+    type_name = f"{keyspace}.{unique_name()}"
+    cql.execute(f"CREATE TYPE {type_name} {cmd}")
     try:
         yield type_name
     finally:
-        cql.execute("DROP TYPE " + type_name)
+        cql.execute(f"DROP TYPE {type_name}")
 
 @contextmanager
 def create_function(cql, keyspace, arg):
-    function_name = keyspace + "." + unique_name()
-    cql.execute("CREATE FUNCTION " + function_name + " " + arg)
+    function_name = f"{keyspace}.{unique_name()}"
+    cql.execute(f"CREATE FUNCTION {function_name} {arg}")
     try:
         yield function_name
     finally:
-        cql.execute("DROP FUNCTION " + function_name)
+        cql.execute(f"DROP FUNCTION {function_name}")
 
 @contextmanager
 def create_materialized_view(cql, keyspace, arg):
-    mv_name = keyspace + "." + unique_name()
-    cql.execute("CREATE MATERIALIZED VIEW " + mv_name + " " + arg)
+    mv_name = f"{keyspace}.{unique_name()}"
+    cql.execute(f"CREATE MATERIALIZED VIEW {mv_name} {arg}")
     try:
         yield mv_name
     finally:
-        cql.execute("DROP MATERIALIZED VIEW " + mv_name)
+        cql.execute(f"DROP MATERIALIZED VIEW {mv_name}")
 
 @contextmanager
 def create_keyspace(cql, arg):
     ks_name = unique_name()
-    cql.execute("CREATE KEYSPACE " + ks_name + " WITH " + arg)
+    cql.execute(f"CREATE KEYSPACE {ks_name} WITH {arg}")
     try:
         yield ks_name
     finally:
-        cql.execute("DROP KEYSPACE " + ks_name)
+        cql.execute(f"DROP KEYSPACE {ks_name}")
 
 # utility function to substitute table name in command.
 # For easy conversion of Java code, support %s as used in Java. Also support
@@ -88,11 +88,10 @@ def subs_table(cmd, table):
     return cmd.replace('%s', table)
 
 def execute(cql, table, cmd, *args):
-    if args:
-        prepared = cql.prepare(subs_table(cmd, table))
-        return cql.execute(prepared, args)
-    else:
+    if not args:
         return cql.execute(subs_table(cmd, table))
+    prepared = cql.prepare(subs_table(cmd, table))
+    return cql.execute(prepared, args)
 
 def execute_with_paging(cql, table, cmd, page_size, *args):
     prepared = cql.prepare(subs_table(cmd, table))
@@ -163,7 +162,7 @@ def assert_row_count(result, expected):
 assertRowCount = assert_row_count
 
 def assert_empty(result):
-    assert len(list(result)) == 0
+    assert not list(result)
 
 assertEmpty = assert_empty
 
@@ -185,9 +184,7 @@ def result_cleanup(item):
         # used prepared statement with wrongly ordered nested item, so
         # we can use _items instead.
         return { freeze(item[0]): item[1] for item in item._items }
-    if isinstance(item, SortedSet):
-        return { freeze(x) for x in item }
-    return item
+    return { freeze(x) for x in item } if isinstance(item, SortedSet) else item
 
 def assert_rows(result, *expected):
     allresults = list(result)
@@ -204,7 +201,7 @@ assertRowsNet = assert_rows
 # expected to be different and we consider that fine.
 def assert_rows2(result, expected1, expected2):
     allresults = list(result)
-    assert len(allresults) == len(expected1) or len(allresults) == len(expected2)
+    assert len(allresults) in [len(expected1), len(expected2)]
     same1 = True
     for r,e in zip(allresults, expected1):
         r = [result_cleanup(col) for col in r]
@@ -238,7 +235,7 @@ def freeze(item):
     elif isinstance(item, SortedSet):
         return frozenset(freeze(val) for val in item)
     elif isinstance(item, set):
-        return frozenset(val for val in item)
+        return frozenset(item)
     return item
 def multiset(items):
     return collections.Counter([freeze(item) for item in items])

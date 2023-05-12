@@ -26,9 +26,7 @@ def get_request(cql, *path):
 def post_request(cql, *path):
     if nodetool.has_rest_api(cql):
         response = requests.post(f"{nodetool.rest_api_url(cql)}/{'/'.join(path)}")
-        if not response.text:
-            return None
-        return response.json()
+        return None if not response.text else response.json()
     else:
         pytest.skip("REST API not available")
 
@@ -38,9 +36,7 @@ def post_request(cql, *path):
 def delete_request(cql, *path):
     if nodetool.has_rest_api(cql):
         response = requests.delete(f"{nodetool.rest_api_url(cql)}/{'/'.join(path)}")
-        if not response.text:
-            return None
-        return response.json()
+        return None if not response.text else response.json()
     else:
         pytest.skip("REST API not available")
 
@@ -67,9 +63,9 @@ def get_column_family_metric(cql, metric, table=None):
 @contextmanager
 def scylla_inject_error(cql, err, one_shot=False):
     post_request(cql, f'v2/error_injection/injection/{err}?one_shot={one_shot}')
-    response = get_request(cql, f'v2/error_injection/injection')
+    response = get_request(cql, 'v2/error_injection/injection')
     print("Enabled error injections:", response)
-    if not err in response:
+    if err not in response:
         pytest.skip("Error injection not enabled in Scylla - try compiling in dev/debug/sanitize mode")
     try:
         yield

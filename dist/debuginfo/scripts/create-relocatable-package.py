@@ -20,17 +20,15 @@ import shutil
 RELOC_PREFIX='scylla-debuginfo'
 def reloc_add(self, name, arcname=None, recursive=True, *, filter=None):
     if arcname:
-        return self.add(name, arcname="{}/{}".format(RELOC_PREFIX, arcname),
-                        filter=filter)
+        return self.add(name, arcname=f"{RELOC_PREFIX}/{arcname}", filter=filter)
     else:
-        return self.add(name, arcname="{}/{}".format(RELOC_PREFIX, name),
-                        filter=filter)
+        return self.add(name, arcname=f"{RELOC_PREFIX}/{name}", filter=filter)
 
 tarfile.TarFile.reloc_add = reloc_add
 
 SCYLLA_DIR='scylla-debuginfo-package'
 def reloc_add(ar, name, arcname=None):
-    ar.add(name, arcname="{}/{}".format(SCYLLA_DIR, arcname if arcname else name))
+    ar.add(name, arcname=f"{SCYLLA_DIR}/{arcname if arcname else name}")
 
 ap = argparse.ArgumentParser(description='Create a relocatable scylla-debuginfo package.')
 ap.add_argument('dest',
@@ -40,9 +38,7 @@ ap.add_argument('--mode', dest='mode', default='release',
 
 args = ap.parse_args()
 
-executables_scylla = [
-                'build/{}/scylla'.format(args.mode),
-                'build/{}/iotune'.format(args.mode)]
+executables_scylla = [f'build/{args.mode}/scylla', f'build/{args.mode}/iotune']
 
 output = args.dest
 
@@ -52,7 +48,9 @@ output = args.dest
 # command. We can complete the compression even faster by using the pigz
 # command - a parallel implementation of gzip utilizing all processors
 # instead of just one.
-gzip_process = subprocess.Popen("pigz > "+output, shell=True, stdin=subprocess.PIPE)
+gzip_process = subprocess.Popen(
+    f"pigz > {output}", shell=True, stdin=subprocess.PIPE
+)
 
 ar = tarfile.open(fileobj=gzip_process.stdin, mode='w|')
 # relocatable package format version = 2.1

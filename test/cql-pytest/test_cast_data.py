@@ -34,10 +34,7 @@ def table1(cql, test_keyspace):
 def signed(number, bits):
     p = 2**bits
     ret = number % p
-    if ret > p/2:
-        return ret - p
-    else:
-        return ret
+    return ret - p if ret > p/2 else ret
 
 # Test casting a very large varint number to various other types, resulting
 # in various non-trivial conversions including truncation or wrap-around of

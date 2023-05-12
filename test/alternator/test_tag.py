@@ -303,10 +303,6 @@ def test_tag_lsi_gsi(table_lsi_gsi):
 def test_concurrent_tag(dynamodb, test_table):
     client = test_table.meta.client
     arn = client.describe_table(TableName=test_table.name)['Table']['TableArn']
-    # Unfortunately by default Python threads print their exceptions
-    # (e.g., assertion failures) but don't propagate them to the join(),
-    # so the overall test doesn't fail. The following Thread wrapper
-    # causes join() to rethrow the exception, so the test will fail.
     class ThreadWrapper(threading.Thread):
         def run(self):
             try:
@@ -327,10 +323,12 @@ def test_concurrent_tag(dynamodb, test_table):
         assert [x['Value'] for x in got if x['Key']==tag] == ['Hello']
         client.untag_resource(ResourceArn=arn, TagKeys=[tag])
         got = test_table.meta.client.list_tags_of_resource(ResourceArn=arn)['Tags']
-        assert [x['Value'] for x in got if x['Key']==tag] == []
+        assert not [x['Value'] for x in got if x['Key']==tag]
+
     def tag_loop(tag, count):
         for i in range(count):
             tag_untag_once(tag)
+
     # The more iterations we do, the higher the chance of reproducing
     # this issue. On my laptop, count = 100 reproduces the bug every time.
     # Lower numbers have some chance of not catching the bug. If this

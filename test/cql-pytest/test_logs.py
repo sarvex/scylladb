@@ -99,8 +99,7 @@ def wait_for_log(logfile, pattern, timeout=5):
         return
     end = time.time() + timeout
     while time.time() < end:
-        s = logfile.read()
-        if s:
+        if s := logfile.read():
             # Though unlikely, it is possible that a single message got
             # split into two reads, so we need to check (and recheck)
             # the entire content since the beginning of this wait :-(
@@ -108,7 +107,9 @@ def wait_for_log(logfile, pattern, timeout=5):
             if prog.search(contents):
                 return
         time.sleep(0.1)
-    pytest.fail(f'Timed out ({timeout} seconds) looking for {pattern} in log file. Got:\n' + contents)
+    pytest.fail(
+        f'Timed out ({timeout} seconds) looking for {pattern} in log file. Got:\n{contents}'
+    )
 
 # A simple example of testing the log file - we check that a table creation,
 # and table deletion, both cause messages to appear on the log.

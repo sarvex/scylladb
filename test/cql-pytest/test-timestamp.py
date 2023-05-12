@@ -17,10 +17,10 @@ import time
 
 @pytest.fixture(scope="session")
 def table1(cql, test_keyspace):
-    table = test_keyspace + "." + unique_name()
+    table = f"{test_keyspace}.{unique_name()}"
     cql.execute(f"CREATE TABLE {table} (k int PRIMARY KEY, v int)")
     yield table
-    cql.execute("DROP TABLE " + table)
+    cql.execute(f"DROP TABLE {table}")
 
 # In Cassandra, timestamps can be any *signed* 64-bit integer, not including
 # the most negative 64-bit integer (-2^63) which for deletion times is
@@ -65,11 +65,12 @@ def test_futuristic_timestamp(cql, table1):
     def restrict_future_timestamp():
         # If not running on Scylla, futuristic timestamp is not restricted
         names = [row.table_name for row in cql.execute("SELECT * FROM system_schema.tables WHERE keyspace_name = 'system'")]
-        if not any('scylla' in name for name in names):
+        if all('scylla' not in name for name in names):
             return False
         # In Scylla, we check the configuration via CQL.
         v = list(cql.execute("SELECT value FROM system.config WHERE name = 'restrict_future_timestamp'"))
         return v[0].value == "true"
+
     if restrict_future_timestamp():
         print('checking with restrict_future_timestamp=true')
         with pytest.raises(InvalidRequest, match='into the future'):

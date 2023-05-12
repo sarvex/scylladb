@@ -18,17 +18,21 @@ def test_basic_batch_write_item(test_table):
 
     with test_table.batch_writer() as batch:
         for i in range(count):
-            batch.put_item(Item={
-                'p': "batch{}".format(i),
-                'c': "batch_ck{}".format(i),
-                'attribute': str(i),
-                'another': 'xyz'
-            })
+            batch.put_item(
+                Item={
+                    'p': f"batch{i}",
+                    'c': f"batch_ck{i}",
+                    'attribute': str(i),
+                    'another': 'xyz',
+                }
+            )
 
     for i in range(count):
-        item = test_table.get_item(Key={'p': "batch{}".format(i), 'c': "batch_ck{}".format(i)}, ConsistentRead=True)['Item']
-        assert item['p'] == "batch{}".format(i)
-        assert item['c'] == "batch_ck{}".format(i)
+        item = test_table.get_item(
+            Key={'p': f"batch{i}", 'c': f"batch_ck{i}"}, ConsistentRead=True
+        )['Item']
+        assert item['p'] == f"batch{i}"
+        assert item['c'] == f"batch_ck{i}"
         assert item['attribute'] == str(i)
         assert item['another'] == 'xyz' 
 
@@ -36,7 +40,7 @@ def test_basic_batch_write_item(test_table):
 # and several partitions. The LWT code collects multiple mutations to the
 # same partition together, and we want to test that this worked correctly.
 def test_batch_write_item_mixed(test_table):
-    partitions = [random_string() for i in range(4)]
+    partitions = [random_string() for _ in range(4)]
     items = [{'p': p, 'c': str(i)} for p in partitions for i in range(4)]
     with test_table.batch_writer() as batch:
         # Reorder items randomly, just for the heck of it
@@ -47,7 +51,7 @@ def test_batch_write_item_mixed(test_table):
 
 # Test batch write to a table with only a hash key
 def test_batch_write_hash_only(test_table_s):
-    items = [{'p': random_string(), 'val': random_string()} for i in range(10)]
+    items = [{'p': random_string(), 'val': random_string()} for _ in range(10)]
     with test_table_s.batch_writer() as batch:
         for item in items:
             batch.put_item(item)
@@ -57,7 +61,7 @@ def test_batch_write_hash_only(test_table_s):
 # Test batch delete operation (DeleteRequest): We create a bunch of items, and
 # then delete them all.
 def test_batch_write_delete(test_table_s):
-    items = [{'p': random_string(), 'val': random_string()} for i in range(10)]
+    items = [{'p': random_string(), 'val': random_string()} for _ in range(10)]
     with test_table_s.batch_writer() as batch:
         for item in items:
             batch.put_item(item)
@@ -68,7 +72,9 @@ def test_batch_write_delete(test_table_s):
             batch.delete_item(Key={'p': item['p']})
     # Verify that all items are now missing:
     for item in items:
-        assert not 'Item' in test_table_s.get_item(Key={'p': item['p']}, ConsistentRead=True)
+        assert 'Item' not in test_table_s.get_item(
+            Key={'p': item['p']}, ConsistentRead=True
+        )
 
 # Test the same batch including both writes and delete. Should be fine.
 def test_batch_write_and_delete(test_table_s):
@@ -76,11 +82,11 @@ def test_batch_write_and_delete(test_table_s):
     p2 = random_string()
     test_table_s.put_item(Item={'p': p1})
     assert 'Item' in test_table_s.get_item(Key={'p': p1}, ConsistentRead=True)
-    assert not 'Item' in test_table_s.get_item(Key={'p': p2}, ConsistentRead=True)
+    assert 'Item' not in test_table_s.get_item(Key={'p': p2}, ConsistentRead=True)
     with test_table_s.batch_writer() as batch:
         batch.put_item({'p': p2})
         batch.delete_item(Key={'p': p1})
-    assert not 'Item' in test_table_s.get_item(Key={'p': p1}, ConsistentRead=True)
+    assert 'Item' not in test_table_s.get_item(Key={'p': p1}, ConsistentRead=True)
     assert 'Item' in test_table_s.get_item(Key={'p': p2}, ConsistentRead=True)
 
 # It is forbidden to update the same key twice in the same batch.
@@ -185,7 +191,7 @@ def test_batch_write_invalid_operation(test_table_s):
             for item in items:
                 batch.put_item(item)
     for p in [p1, p2]:
-        assert not 'item' in test_table_s.get_item(Key={'p': p}, ConsistentRead=True)
+        assert 'item' not in test_table_s.get_item(Key={'p': p}, ConsistentRead=True)
     # test missing key attribute:
     p1 = random_string()
     p2 = random_string()
@@ -195,7 +201,7 @@ def test_batch_write_invalid_operation(test_table_s):
             for item in items:
                 batch.put_item(item)
     for p in [p1, p2]:
-        assert not 'item' in test_table_s.get_item(Key={'p': p}, ConsistentRead=True)
+        assert 'item' not in test_table_s.get_item(Key={'p': p}, ConsistentRead=True)
 
 # In test_item.py we have a bunch of test_empty_* tests on different ways to
 # create an empty item (which in Scylla requires the special CQL row marker
@@ -226,7 +232,10 @@ def test_batch_write_multiple_tables(test_table_s, test_table):
 # Basic test for BatchGetItem, reading several entire items.
 # Schema has both hash and sort keys.
 def test_batch_get_item(test_table):
-    items = [{'p': random_string(), 'c': random_string(), 'val': random_string()} for i in range(10)]
+    items = [
+        {'p': random_string(), 'c': random_string(), 'val': random_string()}
+        for _ in range(10)
+    ]
     with test_table.batch_writer() as batch:
         for item in items:
             batch.put_item(item)
@@ -241,7 +250,10 @@ def test_batch_get_item(test_table):
 # we ask to fetch several sort keys in the same partition key.
 def test_batch_get_item_same_partition_key(test_table):
     p = random_string()
-    items = [{'p': p, 'c': random_string(), 'val': random_string()} for i in range(10)]
+    items = [
+        {'p': p, 'c': random_string(), 'val': random_string()}
+        for _ in range(10)
+    ]
     with test_table.batch_writer() as batch:
         for item in items:
             batch.put_item(item)
@@ -258,7 +270,7 @@ def test_batch_get_item_same_partition_key(test_table):
 
 # Same, with schema has just hash key.
 def test_batch_get_item_hash(test_table_s):
-    items = [{'p': random_string(), 'val': random_string()} for i in range(10)]
+    items = [{'p': random_string(), 'val': random_string()} for _ in range(10)]
     with test_table_s.batch_writer() as batch:
         for item in items:
             batch.put_item(item)
@@ -286,7 +298,15 @@ def test_batch_get_item_completely_missing(test_table_s):
 
 # Test GetItem with AttributesToGet
 def test_batch_get_item_attributes_to_get(test_table):
-    items = [{'p': random_string(), 'c': random_string(), 'val1': random_string(), 'val2': random_string()} for i in range(10)]
+    items = [
+        {
+            'p': random_string(),
+            'c': random_string(),
+            'val1': random_string(),
+            'val2': random_string(),
+        }
+        for _ in range(10)
+    ]
     with test_table.batch_writer() as batch:
         for item in items:
             batch.put_item(item)
@@ -300,7 +320,15 @@ def test_batch_get_item_attributes_to_get(test_table):
 # Test GetItem with ProjectionExpression (just a simple one, with
 # top-level attributes)
 def test_batch_get_item_projection_expression(test_table):
-    items = [{'p': random_string(), 'c': random_string(), 'val1': random_string(), 'val2': random_string()} for i in range(10)]
+    items = [
+        {
+            'p': random_string(),
+            'c': random_string(),
+            'val1': random_string(),
+            'val2': random_string(),
+        }
+        for _ in range(10)
+    ]
     with test_table.batch_writer() as batch:
         for item in items:
             batch.put_item(item)
@@ -317,12 +345,15 @@ def test_batch_unprocessed(test_table_s):
     write_reply = test_table_s.meta.client.batch_write_item(RequestItems = {
         test_table_s.name: [{'PutRequest': {'Item': {'p': p, 'a': 'hi'}}}],
     })
-    assert 'UnprocessedItems' in write_reply and write_reply['UnprocessedItems'] == dict()
+    assert (
+        'UnprocessedItems' in write_reply
+        and write_reply['UnprocessedItems'] == {}
+    )
 
     read_reply = test_table_s.meta.client.batch_get_item(RequestItems = {
         test_table_s.name: {'Keys': [{'p': p}], 'ProjectionExpression': 'p, a', 'ConsistentRead': True}
     })
-    assert 'UnprocessedKeys' in read_reply and read_reply['UnprocessedKeys'] == dict()
+    assert 'UnprocessedKeys' in read_reply and read_reply['UnprocessedKeys'] == {}
 
 # The BatchWriteItem documentation states that it is forbidden for the same
 # item to appear more than once in the same batch, and we have tests above
@@ -354,7 +385,10 @@ def test_batch_write_item_large(test_table_sn):
     write_reply = test_table_sn.meta.client.batch_write_item(RequestItems = {
         test_table_sn.name: [{'PutRequest': {'Item': {'p': p, 'c': i, 'content': long_content}}} for i in range(25)],
     })
-    assert 'UnprocessedItems' in write_reply and write_reply['UnprocessedItems'] == dict()
+    assert (
+        'UnprocessedItems' in write_reply
+        and write_reply['UnprocessedItems'] == {}
+    )
     assert full_query(test_table_sn, KeyConditionExpression='p=:p', ExpressionAttributeValues={':p': p}
         ) == [{'p': p, 'c': i, 'content': long_content} for i in range(25)]
 

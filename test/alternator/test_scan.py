@@ -245,7 +245,7 @@ def test_scan_select(filled_test_table):
 def test_scan_parallel(filled_test_table):
     test_table, items = filled_test_table
     for nsegments in [1, 2, 17]:
-        print('Testing TotalSegments={}'.format(nsegments))
+        print(f'Testing TotalSegments={nsegments}')
         got_items = []
         for segment in range(nsegments):
             got_items.extend(full_scan(test_table, TotalSegments=nsegments, Segment=segment))
@@ -372,12 +372,12 @@ def test_scan_long_partition_tombstone_string(dynamodb, query_tombstone_page_lim
     # with test/alternator/run, but may need to be changed in the future.
     N = int(query_tombstone_page_limit * 8)
     with new_test_table(dynamodb,
-        KeySchema=[{ 'AttributeName': 'p', 'KeyType': 'HASH' }],
-        AttributeDefinitions=[{ 'AttributeName': 'p', 'AttributeType': 'N' }],
-        # This test does a lot of writes, so let's do them without LWT
-        # to make the test less slow.
-        Tags=[{'Key': 'system:write_isolation', 'Value': 'forbid_rmw'}]
-        ) as table:
+            KeySchema=[{ 'AttributeName': 'p', 'KeyType': 'HASH' }],
+            AttributeDefinitions=[{ 'AttributeName': 'p', 'AttributeType': 'N' }],
+            # This test does a lot of writes, so let's do them without LWT
+            # to make the test less slow.
+            Tags=[{'Key': 'system:write_isolation', 'Value': 'forbid_rmw'}]
+            ) as table:
         # We want to have two live partitions with a lot of partition
         # tombstones between them. But the hash function is pseudo-random
         # so we don't know which partitions would be the first and last.
@@ -397,7 +397,7 @@ def test_scan_long_partition_tombstone_string(dynamodb, query_tombstone_page_lim
         # Now write all N items - all except "first" and "last" are deletions
         with table.batch_writer() as batch:
             for i in range(N):
-                if i == first or i == last:
+                if i in [first, last]:
                     batch.put_item(Item={ 'p': i })
                 else:
                     batch.delete_item(Key={ 'p': i })

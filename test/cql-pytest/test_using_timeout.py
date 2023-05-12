@@ -15,11 +15,10 @@ def r(regex):
 
 @pytest.fixture(scope="module")
 def table1(cql, test_keyspace):
-    table = test_keyspace + "." + unique_name()
-    cql.execute("CREATE TABLE " + table +
-        "(p bigint, c int, v int, PRIMARY KEY (p,c))")
+    table = f"{test_keyspace}.{unique_name()}"
+    cql.execute(f"CREATE TABLE {table}(p bigint, c int, v int, PRIMARY KEY (p,c))")
     yield table
-    cql.execute("DROP TABLE " + table)
+    cql.execute(f"DROP TABLE {table}")
 
 # Performing operations with a small enough timeout is guaranteed to fail
 def test_per_query_timeout_effective(scylla_only, cql, table1):
@@ -167,7 +166,7 @@ def test_truncate_using_timeout(scylla_only, cql, table1):
     assert len(res) == 1
     cql.execute(f"TRUNCATE TABLE {table} USING TIMEOUT 1000s")
     res = list(cql.execute(f"SELECT * FROM {table} WHERE p = {key} and c = 1"))
-    assert len(res) == 0
+    assert not res
     with pytest.raises(NoHostAvailable):
         cql.execute(f"TRUNCATE TABLE {table} USING TIMEOUT 0s")
     with pytest.raises(SyntaxException):

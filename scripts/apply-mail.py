@@ -20,8 +20,7 @@ temps = []
 for email_file in args.emails:
     e = email.message_from_file(open(email_file))
     author = e.get('From')
-    m = re.fullmatch(bad_google, author)
-    if m:
+    if m := re.fullmatch(bad_google, author):
         e.replace_header('From', e.get('Reply-To'))
     o = tempfile.NamedTemporaryFile()
     o.write(bytes(e))

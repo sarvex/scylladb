@@ -86,9 +86,14 @@ def this_dc(cql):
 @pytest.fixture(scope="session")
 def test_keyspace(cql, this_dc):
     name = unique_name()
-    cql.execute("CREATE KEYSPACE " + name + " WITH REPLICATION = { 'class' : 'NetworkTopologyStrategy', '" + this_dc + "' : 1 }")
+    cql.execute(
+        f"CREATE KEYSPACE {name}"
+        + " WITH REPLICATION = { 'class' : 'NetworkTopologyStrategy', '"
+        + this_dc
+        + "' : 1 }"
+    )
     yield name
-    cql.execute("DROP KEYSPACE " + name)
+    cql.execute(f"DROP KEYSPACE {name}")
 
 # The "scylla_only" fixture can be used by tests for Scylla-only features,
 # which do not exist on Apache Cassandra. A test using this fixture will be
@@ -98,7 +103,7 @@ def scylla_only(cql):
     # We recognize Scylla by checking if there is any system table whose name
     # contains the word "scylla":
     names = [row.table_name for row in cql.execute("SELECT * FROM system_schema.tables WHERE keyspace_name = 'system'")]
-    if not any('scylla' in name for name in names):
+    if all('scylla' not in name for name in names):
         pytest.skip('Scylla-only test skipped')
 
 # "cassandra_bug" is similar to "scylla_only", except instead of skipping
@@ -110,7 +115,7 @@ def cassandra_bug(cql):
     # We recognize Scylla by checking if there is any system table whose name
     # contains the word "scylla":
     names = [row.table_name for row in cql.execute("SELECT * FROM system_schema.tables WHERE keyspace_name = 'system'")]
-    if not any('scylla' in name for name in names):
+    if all('scylla' not in name for name in names):
         pytest.xfail('A known Cassandra bug')
 
 # Consistent schema change feature is optionally enabled and
@@ -122,11 +127,11 @@ def cassandra_bug(cql):
 def check_pre_consistent_cluster_management(cql):
     # If not running on Scylla, return false.
     names = [row.table_name for row in cql.execute("SELECT * FROM system_schema.tables WHERE keyspace_name = 'system'")]
-    if not any('scylla' in name for name in names):
+    if all('scylla' not in name for name in names):
         return False
     # In Scylla, we check Raft mode by inspecting the configuration via CQL.
     consistent = list(cql.execute("SELECT value FROM system.config WHERE name = 'consistent_cluster_management'"))
-    return len(consistent) == 0 or consistent[0].value == "false"
+    return not consistent or consistent[0].value == "false"
 
 
 @pytest.fixture(scope="function")

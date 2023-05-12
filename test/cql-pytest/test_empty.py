@@ -14,10 +14,10 @@ import nodetool
 
 @pytest.fixture(scope="module")
 def table1(cql, test_keyspace):
-    table = test_keyspace + "." + unique_name()
+    table = f"{test_keyspace}.{unique_name()}"
     cql.execute(f"CREATE TABLE {table} (p text, c text, v text, primary key (p, c))")
     yield table
-    cql.execute("DROP TABLE " + table)
+    cql.execute(f"DROP TABLE {table}")
 
 # In test_insert_null_key in test_null.py we verified that a null value is not
 # allowed as a key column - neither as a partition key nor clustering key.
@@ -159,7 +159,7 @@ def test_empty_int(cql, test_keyspace):
 @pytest.fixture(scope="module")
 def table_all_scalar(cql, test_keyspace):
     types = ['ascii', 'bigint', 'blob', 'boolean', 'date', 'decimal', 'double', 'duration', 'float', 'inet', 'int', 'smallint', 'text', 'time', 'timestamp', 'timeuuid', 'tinyint', 'uuid', 'varchar', 'varint']
-    vars = ', '.join(['v'+x+' '+x for x in types])
+    vars = ', '.join([f'v{x} {x}' for x in types])
     with new_test_table(cql, test_keyspace, f'p int primary key, {vars}') as table:
         yield table
 

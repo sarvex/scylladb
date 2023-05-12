@@ -35,7 +35,7 @@ def fetch_all_pages(results, col):
     pages = []
     while True:
         pages.append([getattr(r, col) for r in list(results.current_rows)])
-        print('fetched page: {}'.format(pages[-1]))
+        print(f'fetched page: {pages[-1]}')
         if results.has_more_pages:
             results.fetch_next_page()
         else:
@@ -331,6 +331,8 @@ def test_static_row_tombstone_span(cql, test_keyspace, lowered_tombstone_limit, 
 # Sanity check that empty pages support didn't mess up truly empty results.
 def test_empty_table(cql, test_keyspace, lowered_tombstone_limit, driver_bug_1):
     with new_test_table(cql, test_keyspace, 'pk int, ck int, v int, PRIMARY KEY (pk, ck)') as table:
-        assert list(cql.execute(f"SELECT * FROM {table}")) == []
-        assert list(cql.execute(f"SELECT * FROM {table} WHERE pk = 0")) == []
-        assert list(cql.execute(f"SELECT * FROM {table} WHERE v = 0 ALLOW FILTERING")) == []
+        assert not list(cql.execute(f"SELECT * FROM {table}"))
+        assert not list(cql.execute(f"SELECT * FROM {table} WHERE pk = 0"))
+        assert not list(
+            cql.execute(f"SELECT * FROM {table} WHERE v = 0 ALLOW FILTERING")
+        )

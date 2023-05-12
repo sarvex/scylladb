@@ -537,7 +537,7 @@ def testMapWithLargePartition(cql, test_keyspace):
     with create_table(cql, test_keyspace, "(userid text PRIMARY KEY, properties map<int, text>) with compression = {}") as table:
         numKeys = 200
         for i in range(numKeys):
-            s = ''.join(random.choice(string.ascii_uppercase) for x in range(length))
+            s = ''.join(random.choice(string.ascii_uppercase) for _ in range(length))
             execute(cql, table,"UPDATE %s SET properties[?] = ? WHERE userid = 'user'", i, s)
 
         flush(cql, table)
@@ -550,12 +550,24 @@ def testMapWithTwoSStables(cql, test_keyspace):
     with create_table(cql, test_keyspace, "(userid text PRIMARY KEY, properties map<int, text>) with compression = {}") as table:
         numKeys = 100
         for i in range(numKeys):
-            execute(cql, table, "UPDATE %s SET properties[?] = ? WHERE userid = 'user'", i, "prop_" + str(i))
+            execute(
+                cql,
+                table,
+                "UPDATE %s SET properties[?] = ? WHERE userid = 'user'",
+                i,
+                f"prop_{str(i)}",
+            )
 
         flush(cql, table)
 
         for i in range(numKeys):
-            execute(cql, table, "UPDATE %s SET properties[?] = ? WHERE userid = 'user'", i + numKeys, "prop_" + str(i + numKeys))
+            execute(
+                cql,
+                table,
+                "UPDATE %s SET properties[?] = ? WHERE userid = 'user'",
+                i + numKeys,
+                f"prop_{str(i + numKeys)}",
+            )
 
         flush(cql, table)
 
@@ -568,12 +580,22 @@ def testSetWithTwoSStables(cql, test_keyspace):
     with create_table(cql, test_keyspace, "(userid text PRIMARY KEY, properties set<text>) with compression = {}") as table:
         numKeys = 100
         for i in range(numKeys):
-            execute(cql, table, "UPDATE %s SET properties = properties + ? WHERE userid = 'user'", {"prop_" + str(i)})
+            execute(
+                cql,
+                table,
+                "UPDATE %s SET properties = properties + ? WHERE userid = 'user'",
+                {f"prop_{str(i)}"},
+            )
 
         flush(cql, table)
 
         for i in range(numKeys):
-            execute(cql, table, "UPDATE %s SET properties = properties + ? WHERE userid = 'user'", {"prop_" + str(i + numKeys)})
+            execute(
+                cql,
+                table,
+                "UPDATE %s SET properties = properties + ? WHERE userid = 'user'",
+                {f"prop_{str(i + numKeys)}"},
+            )
 
         flush(cql, table)
 
@@ -632,7 +654,7 @@ def testListWithElementsBiggerThan64K(cql, test_keyspace):
 
         assert_rows(execute(cql, table, "SELECT l FROM %s WHERE k = 0"), [None])
 
-        execute(cql, table, "INSERT INTO %s(k, l) VALUES (0, ['" + largeText + "', 'v2'])")
+        execute(cql, table, f"INSERT INTO %s(k, l) VALUES (0, ['{largeText}', 'v2'])")
         flush(cql, table)
 
         assert_rows(execute(cql, table, "SELECT l FROM %s WHERE k = 0"), [[largeText, "v2"]])
@@ -970,52 +992,102 @@ def testMapOperation(cql, test_keyspace):
         # with UDF as slice arg
 
         with create_function(cql, test_keyspace, "(arg text) CALLED ON NULL INPUT RETURNS TEXT " +
-                                  "LANGUAGE java AS 'return arg;'") as f:
-            assert_rows(execute(cql, table, "SELECT k, c, l, m[" + f +"('1').." + f +"('22')], o FROM %s WHERE k = 0"),
-                   [0, 0, "foobar", {"1": "value1", "22": "value22"}, 42],
-                   [0, 1, "foobar", {"1": "value1_2"}, 42])
+                                          "LANGUAGE java AS 'return arg;'") as f:
+            assert_rows(
+                execute(
+                    cql,
+                    table,
+                    f"SELECT k, c, l, m[{f}('1')..{f}('22')], o FROM %s WHERE k = 0",
+                ),
+                [0, 0, "foobar", {"1": "value1", "22": "value22"}, 42],
+                [0, 1, "foobar", {"1": "value1_2"}, 42],
+            )
 
-            assert_rows(execute(cql, table, "SELECT k, c, l, m[" + f +"(?).." + f +"(?)], o FROM %s WHERE k = 0", "1", "22"),
-                   [0, 0, "foobar", {"1": "value1", "22": "value22"}, 42],
-                   [0, 1, "foobar", {"1": "value1_2"}, 42])
+            assert_rows(
+                execute(
+                    cql,
+                    table,
+                    f"SELECT k, c, l, m[{f}(?)..{f}(?)], o FROM %s WHERE k = 0",
+                    "1",
+                    "22",
+                ),
+                [0, 0, "foobar", {"1": "value1", "22": "value22"}, 42],
+                [0, 1, "foobar", {"1": "value1_2"}, 42],
+            )
 
         # with UDF taking a map
         # FIXME: I think the test is wrong (and was wrong in Cassandra) -
         # it doesn't actually check a map...
 
         with create_function(cql, test_keyspace, "(m text) CALLED ON NULL INPUT RETURNS TEXT " +
-                                  "LANGUAGE java AS $$return m;$$") as f:
-            assert_rows(execute(cql, table, "SELECT k, c, " + f + "(m['1']) FROM %s WHERE k = 0"),
-                   [0, 0, "value1"],
-                   [0, 1, "value1_2"])
+                                          "LANGUAGE java AS $$return m;$$") as f:
+            assert_rows(
+                execute(
+                    cql, table, f"SELECT k, c, {f}(m['1']) FROM %s WHERE k = 0"
+                ),
+                [0, 0, "value1"],
+                [0, 1, "value1_2"],
+            )
 
         # with UDF taking multiple cols
 
         with create_function(cql, test_keyspace, "(m1 map<text, text>, m2 text, k int, c int) CALLED ON NULL INPUT RETURNS TEXT " +
-                                  "LANGUAGE java AS $$return m1.get(\"1\") + ':' + m2 + ':' + k + ':' + c;$$") as f:
-            assert_rows(execute(cql, table, "SELECT " + f + "(m, m['1'], k, c) FROM %s WHERE k = 0"),
-                   ["value1:value1:0:0"],
-                   ["value1_2:value1_2:0:1"])
+                                          "LANGUAGE java AS $$return m1.get(\"1\") + ':' + m2 + ':' + k + ':' + c;$$") as f:
+            assert_rows(
+                execute(
+                    cql,
+                    table,
+                    f"SELECT {f}(m, m['1'], k, c) FROM %s WHERE k = 0",
+                ),
+                ["value1:value1:0:0"],
+                ["value1_2:value1_2:0:1"],
+            )
 
         # with nested UDF + aggregation and multiple cols
 
         with create_function(cql, test_keyspace, "(k int, c int) CALLED ON NULL INPUT RETURNS INT " +
-                                  "LANGUAGE java AS $$return k + c;$$") as f:
+                                          "LANGUAGE java AS $$return k + c;$$") as f:
             # The Python driver changes non-alpha-numeric characters in the
             # middle of column names to "_" and drops them in the start or
             # end of the column name - i.e., 
             # system.max(cql_test_1607272438822.cql_test_1607272439614(k, c))
             # to
             # system_max_cql_test_1607272438822_cql_test_1607272439614_k__c
-            assert_column_names(execute(cql, table, "SELECT max(" + f + "(k, c)) as sel1, max(" + f + "(k, c)) FROM %s WHERE k = 0"),
-                          "sel1", "system_max_" + f.replace('.', '_') + "_k__c")
-            assert_rows(execute(cql, table, "SELECT max(" + f + "(k, c)) as sel1, max(" + f + "(k, c)) FROM %s WHERE k = 0"),
-                   [1, 1])
+            assert_column_names(
+                execute(
+                    cql,
+                    table,
+                    f"SELECT max({f}(k, c)) as sel1, max({f}(k, c)) FROM %s WHERE k = 0",
+                ),
+                "sel1",
+                "system_max_" + f.replace('.', '_') + "_k__c",
+            )
+            assert_rows(
+                execute(
+                    cql,
+                    table,
+                    f"SELECT max({f}(k, c)) as sel1, max({f}(k, c)) FROM %s WHERE k = 0",
+                ),
+                [1, 1],
+            )
 
-            assert_column_names(execute(cql, table, "SELECT max(" + f + "(k, c)) as sel1, max(" + f + "(k, c)) FROM %s"),
-                "sel1", "system_max_" + f.replace('.', '_') + "_k__c")
-            assert_rows(execute(cql, table, "SELECT max(" + f + "(k, c)) as sel1, max(" + f + "(k, c)) FROM %s"),
-                [2, 2])
+            assert_column_names(
+                execute(
+                    cql,
+                    table,
+                    f"SELECT max({f}(k, c)) as sel1, max({f}(k, c)) FROM %s",
+                ),
+                "sel1",
+                "system_max_" + f.replace('.', '_') + "_k__c",
+            )
+            assert_rows(
+                execute(
+                    cql,
+                    table,
+                    f"SELECT max({f}(k, c)) as sel1, max({f}(k, c)) FROM %s",
+                ),
+                [2, 2],
+            )
 
         # prepared parameters
         assert_rows(execute(cql, table, "SELECT c, m[?], fm[?] FROM %s WHERE k = 0", "1", "1"),
@@ -1077,49 +1149,99 @@ def testMapOperationWithIntKey(cql, test_keyspace):
 
         # with UDF as slice arg
         with create_function(cql, test_keyspace, "(arg int) CALLED ON NULL INPUT RETURNS int " +
-                                  "LANGUAGE java AS 'return arg;'") as f:
-            assert_rows(execute(cql, table, "SELECT k, c, l, m[" + f +"(1).." + f +"(22)], o FROM %s WHERE k = 0"),
-                   [0, 0, "foobar", {1: "value1", 22: "value22"}, 42],
-                   [0, 1, "foobar", {1: "value1_2"}, 42])
+                                          "LANGUAGE java AS 'return arg;'") as f:
+            assert_rows(
+                execute(
+                    cql,
+                    table,
+                    f"SELECT k, c, l, m[{f}(1)..{f}(22)], o FROM %s WHERE k = 0",
+                ),
+                [0, 0, "foobar", {1: "value1", 22: "value22"}, 42],
+                [0, 1, "foobar", {1: "value1_2"}, 42],
+            )
 
-            assert_rows(execute(cql, table, "SELECT k, c, l, m[" + f +"(?).." + f +"(?)], o FROM %s WHERE k = 0", 1, 22),
-                   [0, 0, "foobar", {1: "value1", 22: "value22"}, 42],
-                   [0, 1, "foobar", {1: "value1_2"}, 42])
+            assert_rows(
+                execute(
+                    cql,
+                    table,
+                    f"SELECT k, c, l, m[{f}(?)..{f}(?)], o FROM %s WHERE k = 0",
+                    1,
+                    22,
+                ),
+                [0, 0, "foobar", {1: "value1", 22: "value22"}, 42],
+                [0, 1, "foobar", {1: "value1_2"}, 42],
+            )
 
         # with UDF taking a map
         # FIXME: I think the test is wrong (and was wrong in Cassandra) -
         # it doesn't actually check a map...
         with create_function(cql, test_keyspace, "(m text) CALLED ON NULL INPUT RETURNS TEXT " +
-                                  "LANGUAGE java AS $$return m;$$") as f:
-            assert_rows(execute(cql, table, "SELECT k, c, " + f + "(m[1]) FROM %s WHERE k = 0"),
-                   [0, 0, "value1"],
-                   [0, 1, "value1_2"])
+                                          "LANGUAGE java AS $$return m;$$") as f:
+            assert_rows(
+                execute(
+                    cql, table, f"SELECT k, c, {f}(m[1]) FROM %s WHERE k = 0"
+                ),
+                [0, 0, "value1"],
+                [0, 1, "value1_2"],
+            )
 
         # with UDF taking multiple cols
         with create_function(cql, test_keyspace, "(m1 map<int, text>, m2 text, k int, c int) CALLED ON NULL INPUT RETURNS TEXT " +
-                                  "LANGUAGE java AS $$return m1.get(1) + ':' + m2 + ':' + k + ':' + c;$$") as f:
-            assert_rows(execute(cql, table, "SELECT " + f + "(m, m[1], k, c) FROM %s WHERE k = 0"),
-                   ["value1:value1:0:0"],
-                   ["value1_2:value1_2:0:1"])
+                                          "LANGUAGE java AS $$return m1.get(1) + ':' + m2 + ':' + k + ':' + c;$$") as f:
+            assert_rows(
+                execute(
+                    cql,
+                    table,
+                    f"SELECT {f}(m, m[1], k, c) FROM %s WHERE k = 0",
+                ),
+                ["value1:value1:0:0"],
+                ["value1_2:value1_2:0:1"],
+            )
 
         # with nested UDF + aggregation and multiple cols
         with create_function(cql, test_keyspace, "(k int, c int) CALLED ON NULL INPUT RETURNS int " +
-                                  "LANGUAGE java AS $$return k + c;$$") as f:
+                                          "LANGUAGE java AS $$return k + c;$$") as f:
             # The Python driver changes non-alpha-numeric characters in the
             # middle of column names to "_" and drops them in the start or
             # end of the column name - i.e., 
             # system.max(cql_test_1607272438822.cql_test_1607272439614(k, c))
             # to
             # system_max_cql_test_1607272438822_cql_test_1607272439614_k__c
-            assert_column_names(execute(cql, table, "SELECT max(" + f + "(k, c)) as sel1, max(" + f + "(k, c)) FROM %s WHERE k = 0"),
-                          "sel1", "system_max_" + f.replace('.', '_') + "_k__c")
-            assert_rows(execute(cql, table, "SELECT max(" + f + "(k, c)) as sel1, max(" + f + "(k, c)) FROM %s WHERE k = 0"),
-                   [1, 1])
+            assert_column_names(
+                execute(
+                    cql,
+                    table,
+                    f"SELECT max({f}(k, c)) as sel1, max({f}(k, c)) FROM %s WHERE k = 0",
+                ),
+                "sel1",
+                "system_max_" + f.replace('.', '_') + "_k__c",
+            )
+            assert_rows(
+                execute(
+                    cql,
+                    table,
+                    f"SELECT max({f}(k, c)) as sel1, max({f}(k, c)) FROM %s WHERE k = 0",
+                ),
+                [1, 1],
+            )
 
-            assert_column_names(execute(cql, table, "SELECT max(" + f + "(k, c)) as sel1, max(" + f + "(k, c)) FROM %s"),
-                          "sel1", "system_max_" + f.replace('.', '_') + "_k__c")
-            assert_rows(execute(cql, table, "SELECT max(" + f + "(k, c)) as sel1, max(" + f + "(k, c)) FROM %s"),
-                   [2, 2])
+            assert_column_names(
+                execute(
+                    cql,
+                    table,
+                    f"SELECT max({f}(k, c)) as sel1, max({f}(k, c)) FROM %s",
+                ),
+                "sel1",
+                "system_max_" + f.replace('.', '_') + "_k__c",
+            )
+            assert_rows(
+                execute(
+                    cql,
+                    table,
+                    f"SELECT max({f}(k, c)) as sel1, max({f}(k, c)) FROM %s",
+                ),
+                [2, 2],
+            )
 
         # prepared parameters
 
@@ -1276,10 +1398,18 @@ def testSetOperation(cql, test_keyspace):
 @pytest.mark.xfail(reason="Cassandra 4.0 feature of selecting part of map or list not yet supported. Issue #7751")
 def testCollectionSliceOnMV(cql, test_keyspace):
     with create_table(cql, test_keyspace, "(k int, c int, l text, m map<text, text>, o int, PRIMARY KEY (k, c))") as table:
-        assert_invalid_message(cql, table, "Can only select columns by name when defining a materialized view (got m['abc'])",
-                             "CREATE MATERIALIZED VIEW " + test_keyspace + ".view1 AS SELECT m['abc'] FROM %s WHERE k IS NOT NULL AND c IS NOT NULL AND m IS NOT NULL PRIMARY KEY (c, k)");
-        assert_invalid_message(cql, table, "Can only select columns by name when defining a materialized view (got m['abc'..'def'])",
-                             "CREATE MATERIALIZED VIEW " + test_keyspace + ".view1 AS SELECT m['abc'..'def'] FROM %s WHERE k IS NOT NULL AND c IS NOT NULL AND m IS NOT NULL PRIMARY KEY (c, k)");
+        assert_invalid_message(
+            cql,
+            table,
+            "Can only select columns by name when defining a materialized view (got m['abc'])",
+            f"CREATE MATERIALIZED VIEW {test_keyspace}.view1 AS SELECT m['abc'] FROM %s WHERE k IS NOT NULL AND c IS NOT NULL AND m IS NOT NULL PRIMARY KEY (c, k)",
+        );
+        assert_invalid_message(
+            cql,
+            table,
+            "Can only select columns by name when defining a materialized view (got m['abc'..'def'])",
+            f"CREATE MATERIALIZED VIEW {test_keyspace}.view1 AS SELECT m['abc'..'def'] FROM %s WHERE k IS NOT NULL AND c IS NOT NULL AND m IS NOT NULL PRIMARY KEY (c, k)",
+        );
 
 @pytest.mark.xfail(reason="Cassandra 4.0 feature of selecting part of map or list not yet supported. Issue #7751")
 def testElementAccessOnList(cql, test_keyspace):
@@ -1322,12 +1452,32 @@ def testCollectionOperationResultSetMetadata(cql, test_keyspace):
         }
         """
 
-        assert_rows(result,
-                   [0,
-                       {"1": "one", "2": "two"}, "two", {"2": "two"}, {"1": "one", "2": "two"}, None,
-                       {"1": "one", "2": "two"}, "two", {"2": "two"}, {"1": "one", "2": "two"}, dict(),
-                       {"1", "2", "3"}, "2", {"2", "3"}, {"1", "2"}, {"3"},
-                       {"1", "2", "3"}, "2", {"2", "3"}, {"1", "2"}, {"3"}])
+        assert_rows(
+            result,
+            [
+                0,
+                {"1": "one", "2": "two"},
+                "two",
+                {"2": "two"},
+                {"1": "one", "2": "two"},
+                None,
+                {"1": "one", "2": "two"},
+                "two",
+                {"2": "two"},
+                {"1": "one", "2": "two"},
+                {},
+                {"1", "2", "3"},
+                "2",
+                {"2", "3"},
+                {"1", "2"},
+                {"3"},
+                {"1", "2", "3"},
+                "2",
+                {"2", "3"},
+                {"1", "2"},
+                {"3"},
+            ],
+        )
 
         # FIXME: still need to port this part to Python
         """
@@ -1375,13 +1525,17 @@ def testUDTAndCollectionNestedAccess(cql, test_keyspace):
         # The message returned by Scylla (Non-frozen user types or collections
         # are not allowed inside collections) is slightly different than that
         # returned by Cassandra (Non-frozen UDTs are not allowed inside collections)
-        assert_invalid_message(cql, test_keyspace + "." + unique_name(), "not allowed inside collections",
-            "CREATE TABLE %s (k int PRIMARY KEY, v map<text, " + type_name + ">)")
-        mapType = "map<text, frozen<" + type_name + ">>"
+        assert_invalid_message(
+            cql,
+            f"{test_keyspace}.{unique_name()}",
+            "not allowed inside collections",
+            f"CREATE TABLE %s (k int PRIMARY KEY, v map<text, {type_name}>)",
+        )
+        mapType = f"map<text, frozen<{type_name}>>"
         for frozen in [False, True]:
-            mapType = "frozen<" + mapType + ">" if frozen else mapType
+            mapType = f"frozen<{mapType}>" if frozen else mapType
 
-            with create_table(cql, test_keyspace, "(k int PRIMARY KEY, v " + mapType + ")") as table:
+            with create_table(cql, test_keyspace, f"(k int PRIMARY KEY, v {mapType})") as table:
                 execute(cql, table, "INSERT INTO %s(k, v) VALUES (0, ?)", {"abc": sm_tuple({2, 4, 6}, {"a": "v1", "d": "v2"})})
 
                 for _ in before_and_after_flush(cql, table):
@@ -1389,14 +1543,18 @@ def testUDTAndCollectionNestedAccess(cql, test_keyspace):
                     assert_rows(execute(cql, table, "SELECT v[?].m[..?] FROM %s WHERE k = 0", "abc", "b"), [{"a": "v1"}])
                     assert_rows(execute(cql, table, "SELECT v[?].m[?] FROM %s WHERE k = 0", "abc", "d"), ["v2"])
 
-        assert_invalid_message(cql, test_keyspace + "." + unique_name(), "Non-frozen UDTs with nested non-frozen collections are not supported",
-                             "CREATE TABLE %s (k int PRIMARY KEY, v " + type_name + ")")
+        assert_invalid_message(
+            cql,
+            f"{test_keyspace}.{unique_name()}",
+            "Non-frozen UDTs with nested non-frozen collections are not supported",
+            f"CREATE TABLE %s (k int PRIMARY KEY, v {type_name})",
+        )
 
     with create_type(cql, test_keyspace, "(s frozen<set<int>>, m frozen<map<text, text>>)") as type_name:
         for frozen in [False, True]:
-            type_name = "frozen<" + type_name + ">" if frozen else type_name
+            type_name = f"frozen<{type_name}>" if frozen else type_name
 
-            with create_table(cql, test_keyspace, "(k int PRIMARY KEY, v " + type_name + ")") as table:
+            with create_table(cql, test_keyspace, f"(k int PRIMARY KEY, v {type_name})") as table:
                 execute(cql, table, "INSERT INTO %s(k, v) VALUES (0, ?)", sm_tuple({2, 4, 6}, {"a": "v1", "d": "v2"}))
 
                 for _ in before_and_after_flush(cql, table):
@@ -1512,7 +1670,7 @@ def testSelectionOfEmptyCollections(cql, test_keyspace):
     with create_table(cql, test_keyspace, "(k int PRIMARY KEY, m frozen<map<text, int>>, s frozen<set<int>>)") as table:
         execute(cql, table, "INSERT INTO %s(k) VALUES (0)")
         execute(cql, table, "INSERT INTO %s(k, m, s) VALUES (1, {}, {})")
-        execute(cql, table, "INSERT INTO %s(k, m, s) VALUES (2, ?, ?)", dict(), {})
+        execute(cql, table, "INSERT INTO %s(k, m, s) VALUES (2, ?, ?)", {}, {})
         execute(cql, table, "INSERT INTO %s(k, m, s) VALUES (3, {'2':2}, {2})")
 
         for _ in before_and_after_flush(cql, table):
@@ -1521,25 +1679,73 @@ def testSelectionOfEmptyCollections(cql, test_keyspace):
             assert_rows(execute(cql, table, "SELECT m['0'..'1'], s[0..1] FROM %s WHERE k = 0"), [None, None])
             assert_rows(execute(cql, table, "SELECT m['0'..'1']['3'..'5'], s[0..1][3..5] FROM %s WHERE k = 0"), [None, None])
 
-            assert_rows(execute(cql, table, "SELECT m, s FROM %s WHERE k = 1"), [dict(), set()])
+            assert_rows(
+                execute(cql, table, "SELECT m, s FROM %s WHERE k = 1"),
+                [{}, set()],
+            )
             assert_rows(execute(cql, table, "SELECT m['0'], s[0] FROM %s WHERE k = 1"), [None, None])
-            assert_rows(execute(cql, table, "SELECT m['0'..'1'], s[0..1] FROM %s WHERE k = 1"), [dict(), set()])
-            assert_rows(execute(cql, table, "SELECT m['0'..'1']['3'..'5'], s[0..1][3..5] FROM %s WHERE k = 1"), [dict(), set()])
+            assert_rows(
+                execute(
+                    cql,
+                    table,
+                    "SELECT m['0'..'1'], s[0..1] FROM %s WHERE k = 1",
+                ),
+                [{}, set()],
+            )
+            assert_rows(
+                execute(
+                    cql,
+                    table,
+                    "SELECT m['0'..'1']['3'..'5'], s[0..1][3..5] FROM %s WHERE k = 1",
+                ),
+                [{}, set()],
+            )
 
-            assert_rows(execute(cql, table, "SELECT m, s FROM %s WHERE k = 2"), [dict(), set()])
+            assert_rows(
+                execute(cql, table, "SELECT m, s FROM %s WHERE k = 2"),
+                [{}, set()],
+            )
             assert_rows(execute(cql, table, "SELECT m['0'], s[0] FROM %s WHERE k = 2"), [None, None])
-            assert_rows(execute(cql, table, "SELECT m['0'..'1'], s[0..1] FROM %s WHERE k = 2"), [dict(), set()])
-            assert_rows(execute(cql, table, "SELECT m['0'..'1']['3'..'5'], s[0..1][3..5] FROM %s WHERE k = 2"), [dict(), set()])
+            assert_rows(
+                execute(
+                    cql,
+                    table,
+                    "SELECT m['0'..'1'], s[0..1] FROM %s WHERE k = 2",
+                ),
+                [{}, set()],
+            )
+            assert_rows(
+                execute(
+                    cql,
+                    table,
+                    "SELECT m['0'..'1']['3'..'5'], s[0..1][3..5] FROM %s WHERE k = 2",
+                ),
+                [{}, set()],
+            )
 
             assert_rows(execute(cql, table, "SELECT m, s FROM %s WHERE k = 3"), [{"2": 2}, {2}])
             assert_rows(execute(cql, table, "SELECT m['0'], s[0] FROM %s WHERE k = 3"), [None, None])
-            assert_rows(execute(cql, table, "SELECT m['0'..'1'], s[0..1] FROM %s WHERE k = 3"), [dict(), set()])
-            assert_rows(execute(cql, table, "SELECT m['0'..'1']['3'..'5'], s[0..1][3..5] FROM %s WHERE k = 3"), [dict(), set()])
+            assert_rows(
+                execute(
+                    cql,
+                    table,
+                    "SELECT m['0'..'1'], s[0..1] FROM %s WHERE k = 3",
+                ),
+                [{}, set()],
+            )
+            assert_rows(
+                execute(
+                    cql,
+                    table,
+                    "SELECT m['0'..'1']['3'..'5'], s[0..1][3..5] FROM %s WHERE k = 3",
+                ),
+                [{}, set()],
+            )
 
     with create_table(cql, test_keyspace, "(k int PRIMARY KEY, m map<text, int>, s set<int>)") as table:
         execute(cql, table, "INSERT INTO %s(k) VALUES (0)")
         execute(cql, table, "INSERT INTO %s(k, m, s) VALUES (1, {}, {})")
-        execute(cql, table, "INSERT INTO %s(k, m, s) VALUES (2, ?, ?)", dict(), {})
+        execute(cql, table, "INSERT INTO %s(k, m, s) VALUES (2, ?, ?)", {}, {})
         execute(cql, table, "INSERT INTO %s(k, m, s) VALUES (3, {'2':2}, {2})")
 
         for _ in before_and_after_flush(cql, table):

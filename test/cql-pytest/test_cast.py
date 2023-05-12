@@ -37,17 +37,17 @@ import uuid
 
 @pytest.fixture(scope="module")
 def table1(cql, test_keyspace):
-    table = test_keyspace + "." + unique_name()
+    table = f"{test_keyspace}.{unique_name()}"
     cql.execute(f"CREATE TABLE {table} (pk int PRIMARY KEY, blob_col blob, int_col int, bigint_col bigint)")
     yield table
-    cql.execute("DROP TABLE " + table)
+    cql.execute(f"DROP TABLE {table}")
 
 @pytest.fixture(scope="module")
 def table2(cql, test_keyspace):
-    table = test_keyspace + "." + unique_name()
+    table = f"{test_keyspace}.{unique_name()}"
     cql.execute(f"CREATE TABLE {table} (pk int PRIMARY KEY, d date)")
     yield table
-    cql.execute("DROP TABLE " + table)
+    cql.execute(f"DROP TABLE {table}")
 
 # Implicitly casting an integer constant to blob fails, it's unknown what the exact type is - is it tinyint, bigint?
 # It's important that it stays this way - in the future we might implement guessing the type of untyped constants

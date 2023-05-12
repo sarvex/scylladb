@@ -52,8 +52,13 @@ def scylla_path(cql):
 @pytest.fixture(scope="module")
 def scylla_data_dir(cql):
     try:
-        dir = json.loads(cql.execute("SELECT value FROM system.config WHERE name = 'data_file_directories'").one().value)[0]
-        return dir
+        return json.loads(
+            cql.execute(
+                "SELECT value FROM system.config WHERE name = 'data_file_directories'"
+            )
+            .one()
+            .value
+        )[0]
     except:
         pytest.skip("Can't find Scylla sstable directory")
 
@@ -164,7 +169,7 @@ def table_with_counters(cql, keyspace):
     cql.execute(schema)
 
     for pk in range(0, 10):
-        for c in range(0, 4):
+        for _ in range(0, 4):
             cql.execute(f"UPDATE {keyspace}.{table} SET v = v + 1 WHERE pk = {pk};")
         if pk == 5:
             nodetool.flush(cql, f"{keyspace}.{table}")
@@ -182,7 +187,7 @@ def scylla_sstable(table_factory, cql, ks, data_dir):
     with open(schema_file, "w") as f:
         f.write(schema)
 
-    sstables = glob.glob(os.path.join(data_dir, ks, table + '-*', '*-Data.db'))
+    sstables = glob.glob(os.path.join(data_dir, ks, f'{table}-*', '*-Data.db'))
 
     try:
         yield (schema_file, sstables)
@@ -354,11 +359,20 @@ end
         sst2 = os.path.basename(sstables[1])
         def run_scenario(script_args, expected):
             print(f"Scenario: '{script_args}'\n")
-            if script_args:
-                script_args = ["--script-arg", script_args]
-            else:
-                script_args = []
-            script_args = [scylla_path, "sstable", "script", "--schema-file", schema_file, "--script-file", script_file] + script_args + sstables[0:2]
+            script_args = ["--script-arg", script_args] if script_args else []
+            script_args = (
+                [
+                    scylla_path,
+                    "sstable",
+                    "script",
+                    "--schema-file",
+                    schema_file,
+                    "--script-file",
+                    script_file,
+                ]
+                + script_args
+                + sstables[:2]
+            )
             res = json.loads(subprocess.check_output(script_args))
             assert res == expected
 
@@ -372,13 +386,13 @@ end
 
 
 def test_scylla_sstable_script_slice(cql, test_keyspace, scylla_path, scylla_data_dir):
+
+
+
     class bound:
         @staticmethod
         def unpack_value(value):
-            if isinstance(value, tuple):
-                return value
-            else:
-                return None, value
+            return value if isinstance(value, tuple) else (None, value)
 
         def __init__(self, value, weight):
             self.token, self.value = self.unpack_value(value)
@@ -389,11 +403,8 @@ def test_scylla_sstable_script_slice(cql, test_keyspace, scylla_path, scylla_dat
                 assert(self.weight)
                 return -self.weight
             token, value = self.unpack_value(value)
-            if token is None:
-                res = 0
-            else:
-                res = int(token) - int(self.token)
-            if res == 0 and not value is None and not self.value is None :
+            res = 0 if token is None else int(token) - int(self.token)
+            if res == 0 and value is not None and self.value is not None:
                 res = int(value) - int(self.value)
             return res if res else -self.weight
 
@@ -415,6 +426,7 @@ def test_scylla_sstable_script_slice(cql, test_keyspace, scylla_path, scylla_dat
         @staticmethod
         def after(value):
             return bound(value, 1)
+
 
 
     class interval:
@@ -478,7 +490,7 @@ def test_scylla_sstable_script_slice(cql, test_keyspace, scylla_path, scylla_dat
         cks = set()
         for p in reference_summary:
             for t, ck in p["frags"]:
-                if not ck is None:
+                if ck is not None:
                     cks.add(ck)
         cks = sorted(list(cks))
         serialized_pk_lookup = {pk: subprocess.check_output([scylla_path, "types", "serialize", "--full-compound", "-t", "Int32Type", "--", pk]).strip().decode() for t, pk in pks}

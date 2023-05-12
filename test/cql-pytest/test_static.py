@@ -31,7 +31,7 @@ def table1(cql, test_keyspace):
 def test_static_not_selected(cql, table1):
     p = unique_key_int()
     # The partition p doesn't exist, so the following select yields nothing:
-    assert list(cql.execute(f'SELECT * FROM {table1} WHERE p={p}')) == []
+    assert not list(cql.execute(f'SELECT * FROM {table1} WHERE p={p}'))
     # Insert just the static column, and no clustering row:
     cql.execute(f'INSERT INTO {table1} (p, s) values ({p}, 1)')
     # If we select all the columns, including the static column s, SELECTing
@@ -45,7 +45,7 @@ def test_static_not_selected(cql, table1):
     # previous SELECT, just intersected with the desired column)?
     # Currently, Cassandra does the former, Scylla does the latter,
     # so the following assert fails on Scylla:
-    assert list(cql.execute(f'SELECT r FROM {table1} WHERE p={p}')) == []
+    assert not list(cql.execute(f'SELECT r FROM {table1} WHERE p={p}'))
 
 # Verify that if a partition has a static column set, reading an *existing*
 # clustering row will return it, but reading a *non-existing* row will not
@@ -63,4 +63,6 @@ def test_missing_row_with_static(cql, table1):
     assert list(cql.execute(f'SELECT p, s, c, r FROM {table1} WHERE p={p} AND c=2')) == [(p, 1, 2, 3)]
     # If we SELECT row c=1 (which doesn't exist), we get nothing - not even
     # the static column
-    assert list(cql.execute(f'SELECT p, s, c, r FROM {table1} WHERE p={p} AND c=1')) == []
+    assert not list(
+        cql.execute(f'SELECT p, s, c, r FROM {table1} WHERE p={p} AND c=1')
+    )

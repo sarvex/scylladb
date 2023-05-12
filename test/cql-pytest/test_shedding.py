@@ -16,10 +16,10 @@ from contextlib import contextmanager
 
 @pytest.fixture(scope="module")
 def table1(cql, test_keyspace):
-    table = test_keyspace + "." + unique_name()
+    table = f"{test_keyspace}.{unique_name()}"
     cql.execute(f"CREATE TABLE {table} (p int primary key, t text)")
     yield table
-    cql.execute("DROP TABLE " + table)
+    cql.execute(f"DROP TABLE {table}")
 
 
 @contextmanager
@@ -121,5 +121,5 @@ def test_shed_too_large_request(cql, table1, scylla_only):
     assert get_protocol_errors(current_metrics) == get_protocol_errors(initial_metrics)
 
     cql.execute(prepared, ["small_string"])
-    res = [row for row in cql.execute(f"SELECT p, t FROM {table1}")]
+    res = list(cql.execute(f"SELECT p, t FROM {table1}"))
     assert len(res) == 1 and res[0].p == 42 and res[0].t == "small_string"

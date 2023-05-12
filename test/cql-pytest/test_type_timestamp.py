@@ -110,15 +110,35 @@ def test_type_timestamp_comparison(cql, table2):
     p = unique_key_int()
     cql.execute(f"INSERT INTO {table2} (p, c, t) VALUES ({p}, 1, '2011-02-03 04:05:12.345+0000')")
     assert list(cql.execute(f"SELECT c from {table2} where p = {p} and t = '2011-02-03 04:05:12.345+0000' ALLOW FILTERING")) == [(1,)]
-    assert list(cql.execute(f"SELECT c from {table2} where p = {p} and t = '2012-02-03 04:05:12.345+0000' ALLOW FILTERING")) == []
+    assert not list(
+        cql.execute(
+            f"SELECT c from {table2} where p = {p} and t = '2012-02-03 04:05:12.345+0000' ALLOW FILTERING"
+        )
+    )
     assert list(cql.execute(f"SELECT c from {table2} where p = {p} and t < '2011-02-04+0000' ALLOW FILTERING")) == [(1,)]
-    assert list(cql.execute(f"SELECT c from {table2} where p = {p} and t < '2011-02-03+0000' ALLOW FILTERING")) == []
+    assert not list(
+        cql.execute(
+            f"SELECT c from {table2} where p = {p} and t < '2011-02-03+0000' ALLOW FILTERING"
+        )
+    )
     assert list(cql.execute(f"SELECT c from {table2} where p = {p} and t > '2011-02-03+0000' ALLOW FILTERING")) == [(1,)]
-    assert list(cql.execute(f"SELECT c from {table2} where p = {p} and t > '2011-02-04+0000' ALLOW FILTERING")) == []
+    assert not list(
+        cql.execute(
+            f"SELECT c from {table2} where p = {p} and t > '2011-02-04+0000' ALLOW FILTERING"
+        )
+    )
     assert list(cql.execute(f"SELECT c from {table2} where p = {p} and t <= '2011-02-03 04:05:12.345+0000' ALLOW FILTERING")) == [(1,)]
-    assert list(cql.execute(f"SELECT c from {table2} where p = {p} and t < '2011-02-03 04:05:12.345+0000' ALLOW FILTERING")) == []
+    assert not list(
+        cql.execute(
+            f"SELECT c from {table2} where p = {p} and t < '2011-02-03 04:05:12.345+0000' ALLOW FILTERING"
+        )
+    )
     assert list(cql.execute(f"SELECT c from {table2} where p = {p} and t >= '2011-02-03 04:05:12.345+0000' ALLOW FILTERING")) == [(1,)]
-    assert list(cql.execute(f"SELECT c from {table2} where p = {p} and t > '2011-02-03 04:05:12.345+0000' ALLOW FILTERING")) == []
+    assert not list(
+        cql.execute(
+            f"SELECT c from {table2} where p = {p} and t > '2011-02-03 04:05:12.345+0000' ALLOW FILTERING"
+        )
+    )
 
 # Cassandra 4 added the feature of arithmetic between values in general, and
 # timestamps in particular (to which durations can be added). Scylla used to

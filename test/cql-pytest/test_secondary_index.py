@@ -27,30 +27,43 @@ def test_partition_order_with_si(cql, test_keyspace):
         # Insert 20 partitions, all of them with x=1 so that filtering by x=1
         # will yield the same 20 partitions:
         N = 20
-        stmt = cql.prepare('INSERT INTO '+table+' (pk, x) VALUES (?, ?)')
+        stmt = cql.prepare(f'INSERT INTO {table} (pk, x) VALUES (?, ?)')
         for i in range(N):
             cql.execute(stmt, [i, 1])
         # SELECT all the rows, and verify they are returned in increasing
         # partition token order (note that the token is a *signed* number):
-        tokens = [row.system_token_pk for row in cql.execute('SELECT token(pk) FROM '+table)]
+        tokens = [
+            row.system_token_pk
+            for row in cql.execute(f'SELECT token(pk) FROM {table}')
+        ]
         assert len(tokens) == N
         assert sorted(tokens) == tokens
         # Now select all the partitions with filtering of x=1. Since all
         # rows have x=1, this shouldn't change the list of matching rows, and
         # also shouldn't check their order:
-        tokens1 = [row.system_token_pk for row in cql.execute('SELECT token(pk) FROM '+table+' WHERE x=1 ALLOW FILTERING')]
+        tokens1 = [
+            row.system_token_pk
+            for row in cql.execute(
+                f'SELECT token(pk) FROM {table} WHERE x=1 ALLOW FILTERING'
+            )
+        ]
         assert tokens1 == tokens
         # Now add an index on x, which allows implementing the "x=1"
         # restriction differently. With the index, "ALLOW FILTERING" is
         # no longer necessary. But the order of the results should
         # still not change. Issue #7443 is about the order changing here.
-        cql.execute('CREATE INDEX ON '+table+'(x)')
+        cql.execute(f'CREATE INDEX ON {table}(x)')
         # "CREATE INDEX" does not wait until the index is actually available
         # for use. Reads immediately after the CREATE INDEX may fail or return
         # partial results. So let's retry until reads resume working:
-        for i in range(100):
+        for _ in range(100):
             try:
-                tokens2 = [row.system_token_pk for row in cql.execute('SELECT token(pk) FROM '+table+' WHERE x=1')]
+                tokens2 = [
+                    row.system_token_pk
+                    for row in cql.execute(
+                        f'SELECT token(pk) FROM {table} WHERE x=1'
+                    )
+                ]
                 if len(tokens2) == N:
                     break
             except ReadFailure:
@@ -81,7 +94,14 @@ def test_order_of_indexes(scylla_only, cql, test_keyspace):
         # server restart), but some of them fail. Once a proper ordering
         # is implemented, all cases below should succeed.
         def index_used(query, index_name):
-            assert any([index_name in event.description for event in cql.execute(query, trace=True).one().get_query_trace().events])
+            assert any(
+                index_name in event.description
+                for event in cql.execute(query, trace=True)
+                .one()
+                .get_query_trace()
+                .events
+            )
+
         index_used(f"SELECT * FROM {table} WHERE v3 = 1", "my_v3_idx")
         index_used(f"SELECT * FROM {table} WHERE v3 = 1 and v1 = 2 allow filtering", "my_v3_idx")
         index_used(f"SELECT * FROM {table} WHERE p = 1 and v1 = 1 and v3 = 2 allow filtering", "my_v1_idx")
@@ -205,7 +225,7 @@ def test_paging_with_desc_clustering_order(cql, test_keyspace):
         for i in range(3):
             cql.execute(f"INSERT INTO {table}(p,c) VALUES ({i}, 42)")
         stmt = SimpleStatement(f"SELECT * FROM {table} WHERE c = 42", fetch_size=1)
-        assert len([row for row in cql.execute(stmt)]) == 3
+        assert len(list(cql.execute(stmt))) == 3
 
 # The following test is similar to the above, except that the reversed type
 # is not of the indexed column itself - but it's still part of the index's
@@ -238,8 +258,8 @@ def test_partition_deletion(cql, test_keyspace, scylla_only):
         for i in range(1342):
             cql.execute(prep, [i])
         cql.execute(f"DELETE FROM {table} WHERE p = 1")
-        res = [row for row in cql.execute(f"SELECT * FROM {table}_c1_idx_index")]
-        assert len(res) == 0
+        res = list(cql.execute(f"SELECT * FROM {table}_c1_idx_index"))
+        assert not res
 
 # Test that deleting a clustering range works fine, even if it produces a large batch
 # of individual view updates. Refs #8852 - view updates used to be applied with
@@ -320,11 +340,7 @@ def test_too_large_indexed_value_build(cql, test_keyspace):
             # values may not be larger than 64K".
             with pytest.raises(InvalidRequest):
                 cql.execute(read, [big])
-            # All the other keys should eventually be there
-            c = 0
-            for i in range(30):
-                if list(cql.execute(read, [str(i)])):
-                    c += 1
+            c = sum(1 for i in range(30) if list(cql.execute(read, [str(i)])))
             if c == 30:
                 break
             print(c)
@@ -449,7 +465,7 @@ def test_index_weird_chars_in_col_name(cql, test_keyspace):
             index_name = list(cql.execute(f"SELECT index_name FROM system_schema.indexes WHERE keyspace_name = '{ks}' AND table_name = '{cf}'"))[0].index_name
             iswordchar = lambda x: str.isalnum(x) or x == '_'
             cleaned_up_column_name = ''.join(filter(iswordchar, magic_path))
-            assert index_name == cf + '_' + cleaned_up_column_name + '_idx'
+            assert index_name == f'{cf}_{cleaned_up_column_name}_idx'
 
 # Cassandra does not allow IN restrictions on non-primary-key columns,
 # and Scylla does (see test_filtering.py::test_filter_in_restriction).
@@ -554,20 +570,27 @@ def test_filter_and_limit_2(cql, test_keyspace):
         stmt = cql.prepare(f'INSERT INTO {table} (pk, ck1, ck2, x) VALUES (?, ?, ?, ?)')
         N = 10
         J = 3
-        for i in range(N):
-            for j in range(J):
-                cql.execute(stmt, [1, i, j, j+i%2])
+        for i, j in itertools.product(range(N), range(J)):
+            cql.execute(stmt, [1, i, j, j+i%2])
         results = list(cql.execute(f'SELECT ck1 FROM {table} WHERE ck2 = 2 AND x = 3 ALLOW FILTERING'))
         # Note in the data-adding loop above, all rows match our pk=1, and
         # when ck=2 it means j=2 and at that point - x=3 if i%2==1. So the
         # expected results are:
         assert results == [(i,) for i in range(N) if i%2==1]
         for i in [3, 1, N]:
-            assert results[0:i] == list(cql.execute(f'SELECT ck1 FROM {table} WHERE ck2 = 2 AND x = 3 LIMIT {i} ALLOW FILTERING'))
+            assert results[:i] == list(
+                cql.execute(
+                    f'SELECT ck1 FROM {table} WHERE ck2 = 2 AND x = 3 LIMIT {i} ALLOW FILTERING'
+                )
+            )
         # Try exactly the same with adding pk=1, which shouldn't change
         # anything in the result (because all our rows have pk=1).
         for i in [3, 1, N]:
-            assert results[0:i] == list(cql.execute(f'SELECT ck1 FROM {table} WHERE pk = 1 AND ck2 = 2 AND x = 3 LIMIT {i} ALLOW FILTERING'))
+            assert results[:i] == list(
+                cql.execute(
+                    f'SELECT ck1 FROM {table} WHERE pk = 1 AND ck2 = 2 AND x = 3 LIMIT {i} ALLOW FILTERING'
+                )
+            )
 
 # Yet another reproducer for #10649, this time using a local index instead
 # of a global index. As before, test that a LIMIT works correctly in
@@ -1067,24 +1090,32 @@ def test_index_collection_default_name(cql, test_keyspace):
 # an instruction to index a collection, e.g., "keys(m)".
 def test_index_quoted_names(cql, test_keyspace):
     quoted_names = ['"hEllo"', '"x y"', '"hi""hello""yo"', '"""hi"""', '"keys(m)"', '"values(m)"', '"entries(m)"']
-    schema = 'pk int, ck int, m int, ' + ','.join([name + " int" for name in quoted_names]) + ', PRIMARY KEY (pk, ck)'
+    schema = (
+        'pk int, ck int, m int, '
+        + ','.join([f"{name} int" for name in quoted_names])
+        + ', PRIMARY KEY (pk, ck)'
+    )
     with new_test_table(cql, test_keyspace, schema) as table:
         for name in quoted_names:
             cql.execute(f'CREATE INDEX ON {table}({name})')
         names = ','.join(quoted_names)
-        values = ','.join(['3' for name in quoted_names])
+        values = ','.join(['3' for _ in quoted_names])
         cql.execute(f'INSERT INTO {table} (pk, ck, {names}) VALUES (1, 2, {values})')
         for name in quoted_names:
             assert [(1,2)] == list(cql.execute(f'SELECT pk,ck FROM {table} WHERE {name} = 3'))
 
     # Moreover, we can have a collection with a quoted name, and can then
     # ask to index something strange-looking like keys("keys(m)").
-    schema = 'pk int, ck int, m int, ' + ','.join([name + " map<int,int>" for name in quoted_names]) + ', PRIMARY KEY (pk, ck)'
+    schema = (
+        'pk int, ck int, m int, '
+        + ','.join([f"{name} map<int,int>" for name in quoted_names])
+        + ', PRIMARY KEY (pk, ck)'
+    )
     with new_test_table(cql, test_keyspace, schema) as table:
         for name in quoted_names:
             cql.execute(f'CREATE INDEX ON {table}(keys({name}))')
         names = ','.join(quoted_names)
-        values = ','.join(['{3:4}' for name in quoted_names])
+        values = ','.join(['{3:4}' for _ in quoted_names])
         cql.execute(f'INSERT INTO {table} (pk, ck, {names}) VALUES (1, 2, {values})')
         for name in quoted_names:
             assert [(1,2)] == list(cql.execute(f'SELECT pk,ck FROM {table} WHERE {name} CONTAINS KEY 3'))
@@ -1104,7 +1135,7 @@ def test_secondary_collection_index(cql, test_keyspace):
     print(f"Seed for collection index test: {seed}")
     rand = random.Random(seed)
 
-    schema = f'id int, m map<int, text>, primary key (id)'
+    schema = 'id int, m map<int, text>, primary key (id)'
 
     possible_ids = [100, 101]
     possible_keys = [1, 2, 3]
@@ -1114,22 +1145,27 @@ def test_secondary_collection_index(cql, test_keyspace):
         a = (f'insert into {table}(id, m) values (%s, %s)', (id, map))
         print(a)
         cql.execute(*a)
+
     def update_cell(table, id, key, value, **kwargs):
         a = (f'update {table} set m[%s] = %s where id = %s', (key, value, id))
         print(a)
         cql.execute(*a)
+
     def update_delete(table, id, keys, **kwargs):
         a = (f'update {table} set m = m - %s where id = %s', (keys, id))
         print(a)
         cql.execute(*a)
+
     def update_add(table, id, map, **kwargs):
         a = (f'update {table} set m = m + %s where id = %s', (map, id))
         print(a)
         cql.execute(*a)
+
     def delete(table, id, **kwargs):
         a = (f'delete m from {table} where id = %s', (id,))
         print(a)
         cql.execute(*a)
+
     def delete_cell(table, id, key, **kwargs):
         a = (f'delete m[%s] from {table} where id = %s', (key, id))
         print(a)
@@ -1140,17 +1176,22 @@ def test_secondary_collection_index(cql, test_keyspace):
         keys = rand.sample(possible_keys, k=size)
         values = rand.choices(possible_values, k=size)
         return dict(zip(keys, values))
+
     def random_keys():
         return set(random_map())
+
     def random_key():
         return random.choice(possible_keys)
+
     def random_value():
         return random.choice(possible_values)
+
     def random_id():
         return random.choice(possible_ids)
 
     def random_operation():
         return random.choice([insert, update_cell, update_delete, update_add, delete, delete_cell])
+
     def random_args():
         return {
             'map': random_map(),
@@ -1297,9 +1338,8 @@ def test_index_paging_static_column(cql, test_keyspace):
     with new_test_table(cql, test_keyspace, schema) as table:
         cql.execute(f'CREATE INDEX ON {table}(s)')
         insert = cql.prepare(f"INSERT INTO {table}(p,c,s) VALUES (?,?,?)")
-        for p in range(5):
-            for c in range(5):
-                cql.execute(insert, [p, c, 42])
+        for p, c in itertools.product(range(5), range(5)):
+            cql.execute(insert, [p, c, 42])
         for page_size in [1, 2, 3, 4, 100]:
             stmt = SimpleStatement(f"SELECT p, c FROM {table} WHERE s = 42", fetch_size=page_size)
 

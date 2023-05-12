@@ -20,7 +20,12 @@ def test_cdc_log_entries_use_cdc_streams(scylla_only, cql, test_keyspace):
         for i in range(100):
             cql.execute(stmt, [i])
 
-        log_stream_ids = set(r[0] for r in cql.execute(f'select "cdc$stream_id" from {table}_scylla_cdc_log'))
+        log_stream_ids = {
+            r[0]
+            for r in cql.execute(
+                f'select "cdc$stream_id" from {table}_scylla_cdc_log'
+            )
+        }
 
     # There should be exactly one generation, so we just select the streams
     streams_desc = cql.execute(SimpleStatement(
@@ -42,7 +47,7 @@ def test_cdc_alter_table_drop_column(scylla_only, cql, test_keyspace):
         cql.execute(f"insert into {table} (pk, v) values (0, 0)")
         cql.execute(f"insert into {table} (pk, v) values (1, null)")
         flush(cql, table)
-        flush(cql, table + "_scylla_cdc_log")
+        flush(cql, f"{table}_scylla_cdc_log")
         cql.execute(f"alter table {table} drop v")
         cql.execute(f"select * from {table}_scylla_cdc_log")
 

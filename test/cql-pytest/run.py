@@ -22,7 +22,7 @@ import requests
 # See below the example run_scylla_cmd.
 
 def pid_to_dir(pid):
-    return os.path.join(os.getenv('TMPDIR', '/tmp'), 'scylla-test-'+str(pid))
+    return os.path.join(os.getenv('TMPDIR', '/tmp'), f'scylla-test-{str(pid)}')
 
 def run_with_generated_dir(run_cmd_generator, run_dir_generator):
     global run_with_temporary_dir_pids
@@ -169,7 +169,7 @@ for sig in [signal.SIGTERM, signal.SIGHUP]:
 # significantly more than /proc/sys/kernel/pid_max on any system I know.
 def pid_to_ip(pid):
     bytes = pid.to_bytes(3, byteorder='big')
-    return '127.' + str(bytes[0]+1) + '.' + str(bytes[1]) + '.' + str(bytes[2])
+    return f'127.{str(bytes[0] + 1)}.{str(bytes[1])}.{str(bytes[2])}'
 
 ##############################
 
@@ -193,17 +193,21 @@ def find_scylla():
     else:
         scyllas = glob.glob(os.path.join(source_path, 'build/*/scylla'))
         if not scyllas:
-            print("Can't find a Scylla executable in {}.\nPlease build Scylla or set SCYLLA to the path of a Scylla executable.".format(source_path))
+            print(
+                f"Can't find a Scylla executable in {source_path}.\nPlease build Scylla or set SCYLLA to the path of a Scylla executable."
+            )
             exit(1)
         scylla = max(scyllas, key=os.path.getmtime)
     if not os.access(scylla, os.X_OK):
-        print("Cannot execute '{}'.\nPlease set SCYLLA to the path of a Scylla executable.".format(scylla))
+        print(
+            f"Cannot execute '{scylla}'.\nPlease set SCYLLA to the path of a Scylla executable."
+        )
         exit(1)
     return scylla
 
 def run_scylla_cmd(pid, dir):
     ip = pid_to_ip(pid)
-    print('Booting Scylla on ' + ip + ' in ' + dir + '...')
+    print(f'Booting Scylla on {ip} in {dir}...')
     global scylla
     global source_path
     # To make things easier for users of "killall", "top", and similar,
@@ -221,59 +225,84 @@ def run_scylla_cmd(pid, dir):
         'UBSAN_OPTIONS': f'halt_on_error=1:abort_on_error=1:suppressions={source_path}/ubsan-suppressions.supp',
         'ASAN_OPTIONS': 'disable_coredump=0:abort_on_error=1:detect_stack_use_after_returns=1'
     }
-    return ([scylla_link,
-        '--options-file',  source_path + '/conf/scylla.yaml',
-        '--developer-mode', '1',
-        '--ring-delay-ms', '0',
-        '--collectd', '0',
-        '--smp', '2',
-        '-m', '1G',
+    return [
+        scylla_link,
+        '--options-file',
+        f'{source_path}/conf/scylla.yaml',
+        '--developer-mode',
+        '1',
+        '--ring-delay-ms',
+        '0',
+        '--collectd',
+        '0',
+        '--smp',
+        '2',
+        '-m',
+        '1G',
         '--overprovisioned',
-        '--max-networking-io-control-blocks', '1000',
-        '--unsafe-bypass-fsync', '1',
-        '--kernel-page-cache', '1',
-        '--commitlog-use-o-dsync', '0',
-        '--flush-schema-tables-after-modification', 'false',
-        '--api-address', ip,
-        '--rpc-address', ip,
-        '--listen-address', ip,
-        '--prometheus-address', ip,
-        '--seed-provider-parameters', 'seeds=' + ip,
-        '--workdir', dir,
-        '--auto-snapshot', '0',
-        '--skip-wait-for-gossip-to-settle', '0',
-        '--logger-log-level', 'compaction=warn',
-        '--logger-log-level', 'migration_manager=warn',
-        # Use lower settings for some parameters to allow faster testing
-        '--num-tokens', '16',
-        '--query-tombstone-page-limit', '1000',
-        # Significantly increase default timeouts to allow running tests
-        # on a very slow setup (but without network losses). Note that these
-        # are server-side timeouts: The client should also avoid timing out
-        # its own requests - for this reason we increase the CQL driver's
-        # client-side timeout in conftest.py.
-        '--range-request-timeout-in-ms', '300000',
-        '--read-request-timeout-in-ms', '300000',
-        '--counter-write-request-timeout-in-ms', '300000',
-        '--cas-contention-timeout-in-ms', '300000',
-        '--truncate-request-timeout-in-ms', '300000',
-        '--write-request-timeout-in-ms', '300000',
-        '--request-timeout-in-ms', '300000',
-        # Allow testing experimental features. Following issue #9467, we need
-        # to add here specific experimental features as they are introduced.
-        # Note that Alternator-specific experimental features are listed in
-        # test/alternator/run.
+        '--max-networking-io-control-blocks',
+        '1000',
+        '--unsafe-bypass-fsync',
+        '1',
+        '--kernel-page-cache',
+        '1',
+        '--commitlog-use-o-dsync',
+        '0',
+        '--flush-schema-tables-after-modification',
+        'false',
+        '--api-address',
+        ip,
+        '--rpc-address',
+        ip,
+        '--listen-address',
+        ip,
+        '--prometheus-address',
+        ip,
+        '--seed-provider-parameters',
+        f'seeds={ip}',
+        '--workdir',
+        dir,
+        '--auto-snapshot',
+        '0',
+        '--skip-wait-for-gossip-to-settle',
+        '0',
+        '--logger-log-level',
+        'compaction=warn',
+        '--logger-log-level',
+        'migration_manager=warn',
+        '--num-tokens',
+        '16',
+        '--query-tombstone-page-limit',
+        '1000',
+        '--range-request-timeout-in-ms',
+        '300000',
+        '--read-request-timeout-in-ms',
+        '300000',
+        '--counter-write-request-timeout-in-ms',
+        '300000',
+        '--cas-contention-timeout-in-ms',
+        '300000',
+        '--truncate-request-timeout-in-ms',
+        '300000',
+        '--write-request-timeout-in-ms',
+        '300000',
+        '--request-timeout-in-ms',
+        '300000',
         '--experimental-features=udf',
         '--experimental-features=keyspace-storage-options',
-        '--enable-user-defined-functions', '1',
-        # Set up authentication in order to allow testing this module
-        # and other modules dependent on it: e.g. service levels
-        '--authenticator', 'PasswordAuthenticator',
-        '--authorizer', 'CassandraAuthorizer',
-        '--strict-allow-filtering', 'true',
-        '--permissions-update-interval-in-ms', '100',
-        '--permissions-validity-in-ms', '100',
-        ], env)
+        '--enable-user-defined-functions',
+        '1',
+        '--authenticator',
+        'PasswordAuthenticator',
+        '--authorizer',
+        'CassandraAuthorizer',
+        '--strict-allow-filtering',
+        'true',
+        '--permissions-update-interval-in-ms',
+        '100',
+        '--permissions-validity-in-ms',
+        '100',
+    ], env
 
 # Same as run_scylla_cmd, just use SSL encryption for the CQL port (same
 # port number as default - replacing the unencrypted server)
@@ -365,7 +394,7 @@ def wait_for_services(pid, checkers):
             break
         except NotYetUp:
             pass
-    duration = str(round(time.time() - start_time, 1)) + ' seconds'
+    duration = f'{str(round(time.time() - start_time, 1))} seconds'
     if not ready:
         print(f'Boot failed after {duration}.')
         # Run the checkers again, not catching NotYetUp, to show exception
@@ -397,10 +426,7 @@ def run_pytest(pytest_dir, additional_parameters):
         exit(1)
     # parent:
     run_pytest_pids.add(pid)
-    if os.waitpid(pid, 0)[1]:
-        return False
-    else:
-        return True
+    return not os.waitpid(pid, 0)[1]
 
 # Set up self-signed SSL certificate in dir/scylla.key, dir/scylla.crt.
 # These can be used for setting up an HTTPS server for Alternator, or for

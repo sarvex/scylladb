@@ -20,11 +20,15 @@ def test_custom_avg(scylla_only, cql, test_keyspace):
             cql.execute(f"INSERT INTO {table} (id) VALUES ({10**i})")
         avg_partial_body = "(state tuple<bigint, bigint>, val bigint) CALLED ON NULL INPUT RETURNS tuple<bigint, bigint> LANGUAGE lua AS 'return {state[1] + val, state[2] + 1}'"
         div_body = "(state tuple<bigint, bigint>) CALLED ON NULL INPUT RETURNS bigint LANGUAGE lua AS 'return state[1]//state[2]'"
-        with new_function(cql, test_keyspace, avg_partial_body) as avg_partial, new_function(cql, test_keyspace, div_body) as div_fun:
+        with (new_function(cql, test_keyspace, avg_partial_body) as avg_partial, new_function(cql, test_keyspace, div_body) as div_fun):
             custom_avg_body = f"(bigint) SFUNC {avg_partial} STYPE tuple<bigint, bigint> FINALFUNC {div_fun} INITCOND (0,0)"
             with new_aggregate(cql, test_keyspace, custom_avg_body) as custom_avg:
-                custom_res = [row for row in cql.execute(f"SELECT {test_keyspace}.{custom_avg}(id) AS result FROM {table}")]
-                avg_res = [row for row in cql.execute(f"SELECT avg(id) AS result FROM {table}")]
+                custom_res = list(
+                    cql.execute(
+                        f"SELECT {test_keyspace}.{custom_avg}(id) AS result FROM {table}"
+                    )
+                )
+                avg_res = list(cql.execute(f"SELECT avg(id) AS result FROM {table}"))
                 assert custom_res == avg_res
 
 # Test that computing an aggregate which takes 2 parameters works fine.
@@ -36,10 +40,14 @@ def test_map_literal_builder(scylla_only, cql, test_keyspace):
             cql.execute(f"INSERT INTO {table} (id, k, val) VALUES (0, '{chr(ord('a') + i)}', {i})")
         map_literal_partial_body = "(state text, id text, val int) RETURNS NULL ON NULL INPUT RETURNS text LANGUAGE lua AS 'return state..id..\":\"..tostring(val)..\",\"'"
         finish_body = "(state text) CALLED ON NULL INPUT RETURNS text LANGUAGE lua AS 'return state..\"}\"'"
-        with new_function(cql, test_keyspace, map_literal_partial_body) as map_literal_partial, new_function(cql, test_keyspace, finish_body) as finish_fun:
+        with (new_function(cql, test_keyspace, map_literal_partial_body) as map_literal_partial, new_function(cql, test_keyspace, finish_body) as finish_fun):
             map_literal_body = f"(text, int) SFUNC {map_literal_partial} STYPE text FINALFUNC {finish_fun} INITCOND '{{'"
             with new_aggregate(cql, test_keyspace, map_literal_body) as map_literal:
-                map_res = [row for row in cql.execute(f"SELECT {test_keyspace}.{map_literal}(k, val) AS result FROM {table}")]
+                map_res = list(
+                    cql.execute(
+                        f"SELECT {test_keyspace}.{map_literal}(k, val) AS result FROM {table}"
+                    )
+                )
                 assert len(map_res) == 1 and map_res[0].result == '{a:0,b:1,c:2,d:3,e:4,f:5,g:6,h:7,}'
 
 # Test that the state function and final function must exist and have correct signatures
@@ -224,9 +232,13 @@ def test_drop_keyspace_with_uda(scylla_only, cql):
     cql.execute(f"CREATE FUNCTION {ks}.{f2}(acc int) RETURNS NULL ON NULL INPUT RETURNS int LANGUAGE lua AS $$ return acc $$")
     agg = unique_name()
     cql.execute(f"CREATE AGGREGATE {ks}.{agg}(int) SFUNC {f1} STYPE int FINALFUNC {f2} INITCOND 0")
-    aggregates_before = cql.execute(f"SELECT COUNT(*) AS result FROM system_schema.aggregates").one()
+    aggregates_before = cql.execute(
+        "SELECT COUNT(*) AS result FROM system_schema.aggregates"
+    ).one()
     cql.execute(f"DROP KEYSPACE {ks}")
-    aggregates_after = cql.execute(f"SELECT COUNT(*) AS result FROM system_schema.aggregates").one()
+    aggregates_after = cql.execute(
+        "SELECT COUNT(*) AS result FROM system_schema.aggregates"
+    ).one()
     assert aggregates_before.result - aggregates_after.result == 1
     with pytest.raises(ConfigurationException, match="Cannot drop non existing keyspace"):
         cql.execute(f"DROP KEYSPACE {ks}")

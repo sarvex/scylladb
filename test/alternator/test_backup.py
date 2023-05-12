@@ -31,7 +31,9 @@ def test_describe_continuous_backups_without_continuous_backups(test_table):
 # backups are disabled.
 def test_describe_continuous_backups_nonexistent(test_table):
     with pytest.raises(ClientError, match='TableNotFoundException'):
-        test_table.meta.client.describe_continuous_backups(TableName=test_table.name+'nonexistent')
+        test_table.meta.client.describe_continuous_backups(
+            TableName=f'{test_table.name}nonexistent'
+        )
 
 # Test the DescribeContinuousBackups operation without a table name.
 # It should fail with ValidationException.

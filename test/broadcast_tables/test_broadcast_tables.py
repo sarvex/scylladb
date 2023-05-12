@@ -20,14 +20,20 @@ def random_string(size=10) -> str:
 class QueriesHandler:
     def __init__(self, cql):
         self.cql = cql
-        self.prepared_select: PreparedStatement = cql.prepare(f"SELECT value FROM system.broadcast_kv_store WHERE key = ?;")
-        self.prepared_update: PreparedStatement = cql.prepare(f"UPDATE system.broadcast_kv_store SET value = ? WHERE key = ?;")
-        self.prepared_conditional_update: PreparedStatement = cql.prepare(f"UPDATE system.broadcast_kv_store SET value = ? WHERE key = ? IF value = ?;")
+        self.prepared_select: PreparedStatement = cql.prepare(
+            "SELECT value FROM system.broadcast_kv_store WHERE key = ?;"
+        )
+        self.prepared_update: PreparedStatement = cql.prepare(
+            "UPDATE system.broadcast_kv_store SET value = ? WHERE key = ?;"
+        )
+        self.prepared_conditional_update: PreparedStatement = cql.prepare(
+            "UPDATE system.broadcast_kv_store SET value = ? WHERE key = ? IF value = ?;"
+        )
 
     def select(self, key: str) -> Optional[str]:
         result = list(self.cql.execute(self.prepared_select, parameters=[key]))
 
-        if len(result) == 0:
+        if not result:
             return None
 
         assert len(result) == 1
@@ -90,9 +96,9 @@ def test_broadcast_kv_store(cql) -> None:
                 kv_store[key] = new_value
             elif query_type == QueryType.CONDITIONAL_UPDATE:
                 condition_type: ConditionType
-                if len(kv_store) == 0:
+                if not kv_store:
                     condition_type = ConditionType.NEW_KEY
-                elif len(remaining_strings) == 0:
+                elif not remaining_strings:
                     condition_type = random.choice([ConditionType.EXISTING_KEY_PASS, ConditionType.EXISTING_KEY_FAIL])
                 else:
                     condition_type = random.choices(

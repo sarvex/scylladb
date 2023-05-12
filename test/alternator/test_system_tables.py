@@ -15,8 +15,10 @@ internal_prefix = '.scylla.alternator.'
 # Test that fetching key columns from system tables works
 def test_fetch_from_system_tables(scylla_only, dynamodb, rest_api):
     client = dynamodb.meta.client
-    tables_response = client.scan(TableName=internal_prefix+'system_schema.tables',
-            AttributesToGet=['keyspace_name','table_name'])
+    tables_response = client.scan(
+        TableName=f'{internal_prefix}system_schema.tables',
+        AttributesToGet=['keyspace_name', 'table_name'],
+    )
 
     # #13332 - don't rely on "system" prefix to decide what is user keyspace or not.
     resp_user = requests.get(f'{rest_api}/storage_service/keyspaces?type=user', timeout=1)
@@ -31,11 +33,18 @@ def test_fetch_from_system_tables(scylla_only, dynamodb, rest_api):
         if ks_name in keyspaces_user:
             continue
 
-        col_response = client.query(TableName=internal_prefix+'system_schema.columns',
-                KeyConditionExpression=Key('keyspace_name').eq(ks_name) & Key('table_name').eq(table_name))
+        col_response = client.query(
+            TableName=f'{internal_prefix}system_schema.columns',
+            KeyConditionExpression=Key('keyspace_name').eq(ks_name)
+            & Key('table_name').eq(table_name),
+        )
 
-        key_columns = [item['column_name'] for item in col_response['Items'] if item['kind'] == 'clustering' or item['kind'] == 'partition_key']
-        qualified_name = "{}{}.{}".format(internal_prefix, ks_name, table_name)
+        key_columns = [
+            item['column_name']
+            for item in col_response['Items']
+            if item['kind'] in ['clustering', 'partition_key']
+        ]
+        qualified_name = f"{internal_prefix}{ks_name}.{table_name}"
         import time
         start = time.time()
         response = client.scan(TableName=qualified_name, AttributesToGet=key_columns, Limit=50)
@@ -46,8 +55,10 @@ def test_fetch_from_system_tables(scylla_only, dynamodb, rest_api):
 
 def test_block_access_to_non_system_tables_with_virtual_interface(scylla_only, test_table_s, dynamodb):
     client = dynamodb.meta.client
-    with pytest.raises(ClientError, match='ResourceNotFoundException.*{}'.format(internal_prefix)):
-        tables_response = client.scan(TableName="{}alternator_{}.{}".format(internal_prefix, test_table_s.name, test_table_s.name))
+    with pytest.raises(ClientError, match=f'ResourceNotFoundException.*{internal_prefix}'):
+        tables_response = client.scan(
+            TableName=f"{internal_prefix}alternator_{test_table_s.name}.{test_table_s.name}"
+        )
 
 def test_block_creating_tables_with_reserved_prefix(scylla_only, dynamodb):
     client = dynamodb.meta.client

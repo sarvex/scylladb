@@ -38,7 +38,9 @@ def read_input(fname):
         return json.load(f)
 
 def is_indexable(e):
-    return any(e['file'].endswith('.' + suffix) for suffix in ['c', 'C', 'cc', 'cxx'])
+    return any(
+        e['file'].endswith(f'.{suffix}') for suffix in ['c', 'C', 'cc', 'cxx']
+    )
 
 # We can only definitely say whether an entry is built under the right
 # prefix when it has an "output" field, so those without are assumed

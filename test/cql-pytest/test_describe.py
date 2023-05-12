@@ -392,12 +392,10 @@ def test_desc_cluster(scylla_only, cql, test_keyspace):
     desc = cql.execute("DESC CLUSTER").one()
     desc_endpoints = []
     for (end_token, endpoints) in desc.range_ownership.items():
-        for endpoint in endpoints:
-            desc_endpoints.append((end_token, endpoint))
-
+        desc_endpoints.extend((end_token, endpoint) for endpoint in endpoints)
     result = cql.execute(f"SELECT end_token, endpoint FROM system.token_ring WHERE keyspace_name='{test_keyspace}' ORDER BY start_token")
     ring_endpoints = [(r.end_token, r.endpoint) for r in result]
-    
+
     assert sorted(desc_endpoints) == sorted(ring_endpoints)
 
 # Test that 'DESC INDEX' contains create statement od index
@@ -655,7 +653,7 @@ def maybe_quote(ident):
     need_quotes = False
     num_quotes = 0
     for c in ident:
-        if not (('a' <= c and c <= 'z') or ('0' <= c and c <= '9') or c =='_'):
+        if not ('a' <= c <= 'z' or '0' <= c <= '9' or c == '_'):
             need_quotes = True
             num_quotes += (c == '"')
 
@@ -663,10 +661,10 @@ def maybe_quote(ident):
         # TODO: Here is missing part from C++ implamentation (see cql3/cql3_type.cc:448)
         # Here function from Cql.g (cident) is used to ensure the ident doesn't need quoting.
         return ident
-    
+
     if num_quotes == 0:
-        return '"' + ident + '"'
-    
+        return f'"{ident}"'
+
     return '"' + ident.replace('"', "\"\"") + '"'
 
 ### ---------------------------------------------------------------------------
@@ -745,8 +743,7 @@ def new_random_keyspace(cql):
     strategies = ["SimpleStrategy", "NetworkTopologyStrategy"]
     writes = ["true", "false"]
 
-    options = {}
-    options["class"] = random.choice(strategies)
+    options = {"class": random.choice(strategies)}
     options["replication_factor"] = random.randrange(1, 6)
     options_str = ", ".join([f"'{k}': '{v}'" for (k, v) in options.items()])
 

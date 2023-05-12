@@ -23,7 +23,15 @@ def test_grant_applicable_data_and_role_permissions(cql, test_keyspace, cassandr
     user = "cassandra"
     with new_test_table(cql, test_keyspace, schema) as table:
         # EXECUTE is not listed, as it only applies to functions, which aren't covered in this test case
-        all_permissions = set(['create', 'alter', 'drop', 'select', 'modify', 'authorize', 'describe'])
+        all_permissions = {
+            'create',
+            'alter',
+            'drop',
+            'select',
+            'modify',
+            'authorize',
+            'describe',
+        }
         applicable_permissions = {
             'all keyspaces': ['create', 'alter', 'drop', 'select', 'modify', 'authorize'],
             f'keyspace {test_keyspace}': ['create', 'alter', 'drop', 'select', 'modify', 'authorize'],
@@ -43,7 +51,7 @@ def test_grant_applicable_data_and_role_permissions(cql, test_keyspace, cassandr
 
 
 def eventually_authorized(fun, timeout_s=10):
-    for i in range(timeout_s * 10):
+    for _ in range(timeout_s * 10):
         try:
             return fun()
         except Unauthorized as e:
@@ -51,7 +59,7 @@ def eventually_authorized(fun, timeout_s=10):
     return fun()
 
 def eventually_unauthorized(fun, timeout_s=10):
-    for i in range(timeout_s * 10):
+    for _ in range(timeout_s * 10):
         try:
             fun()
             time.sleep(0.1)
@@ -150,10 +158,29 @@ def test_udf_permissions_serialization(cql):
                     for permission in permissions:
                         cql.execute(f"GRANT {permission} ON {resource} TO {user}")
 
-                permissions = {row.resource: row.permissions for row in cql.execute(f"SELECT * FROM system_auth.role_permissions")}
-                assert permissions['functions'] == set(['ALTER', 'AUTHORIZE', 'CREATE', 'DROP', 'EXECUTE'])
-                assert permissions[f'functions/{keyspace}'] == set(['ALTER', 'AUTHORIZE', 'CREATE', 'DROP', 'EXECUTE'])
-                assert permissions[f'functions/{keyspace}/{div_fun}[org.apache.cassandra.db.marshal.LongType^org.apache.cassandra.db.marshal.Int32Type]'] == set(['ALTER', 'AUTHORIZE', 'DROP', 'EXECUTE'])
+                permissions = {
+                    row.resource: row.permissions
+                    for row in cql.execute(
+                        "SELECT * FROM system_auth.role_permissions"
+                    )
+                }
+                assert permissions['functions'] == {
+                    'ALTER',
+                    'AUTHORIZE',
+                    'CREATE',
+                    'DROP',
+                    'EXECUTE',
+                }
+                assert permissions[f'functions/{keyspace}'] == {
+                    'ALTER',
+                    'AUTHORIZE',
+                    'CREATE',
+                    'DROP',
+                    'EXECUTE',
+                }
+                assert permissions[
+                    f'functions/{keyspace}/{div_fun}[org.apache.cassandra.db.marshal.LongType^org.apache.cassandra.db.marshal.Int32Type]'
+                ] == {'ALTER', 'AUTHORIZE', 'DROP', 'EXECUTE'}
 
                 resources_with_execute = [row.resource for row in cql.execute(f"LIST EXECUTE OF {user}")]
                 assert '<all functions>' in resources_with_execute
@@ -181,7 +208,12 @@ def test_udf_permissions_quoted_names(cassandra_bug, cql):
                         grant(cql, 'EXECUTE', f'FUNCTION {keyspace}.{weird_fun}(int)', username)
                         grant(cql, 'SELECT', table, username)
                         cql.execute(f"INSERT INTO {table}(a) VALUES (7)")
-                        assert list([r[0] for r in user_session.execute(f"SELECT {keyspace}.{weird_fun}(a) FROM {table}")]) == [42]
+                        assert [
+                            r[0]
+                            for r in user_session.execute(
+                                f"SELECT {keyspace}.{weird_fun}(a) FROM {table}"
+                            )
+                        ] == [42]
 
                         resources_with_execute = [row.resource for row in cql.execute(f"LIST EXECUTE OF {username}")]
                         assert f'<function {keyspace}.{weird_fun}(int)>' in resources_with_execute
@@ -404,10 +436,10 @@ def test_udf_permissions_with_udt(cql):
 # Test that permissions on user-defined functions with no arguments work
 def test_udf_permissions_no_args(cql):
     with new_test_keyspace(cql, "WITH REPLICATION = { 'class': 'SimpleStrategy', 'replication_factor': 1 }") as keyspace:
-        with new_test_table(cql, keyspace, schema="a int primary key") as table, new_user(cql) as username:
+        with (new_test_table(cql, keyspace, schema="a int primary key") as table, new_user(cql) as username):
             with new_session(cql, username) as user_session:
-                fun_body_lua = f"() CALLED ON NULL INPUT RETURNS int LANGUAGE lua AS 'return 42;'"
-                fun_body_java = f"() CALLED ON NULL INPUT RETURNS int LANGUAGE java AS 'return 42;'"
+                fun_body_lua = "() CALLED ON NULL INPUT RETURNS int LANGUAGE lua AS 'return 42;'"
+                fun_body_java = "() CALLED ON NULL INPUT RETURNS int LANGUAGE java AS 'return 42;'"
                 fun_body = fun_body_lua
                 try:
                     with new_function(cql, keyspace, fun_body):

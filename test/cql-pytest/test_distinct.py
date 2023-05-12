@@ -61,7 +61,7 @@ def test_distinct_limit(cql, test_keyspace):
     with new_test_table(cql, test_keyspace, "p int, c int, v int, PRIMARY KEY (p, c)") as table:
         stmt = cql.prepare(f"insert into {table} (p, c, v) values (?, ?, ?)")
         N = 10
-        ps = [unique_key_int() for i in range(N)]
+        ps = [unique_key_int() for _ in range(N)]
         for i in range(N):
             cql.execute(stmt, [ps[i], 1, 7])
             cql.execute(stmt, [ps[i], 2, 7])
@@ -86,7 +86,7 @@ def test_distinct_count_group_by_limit(cql, test_keyspace):
     with new_test_table(cql, test_keyspace, "p int, c int, v int, PRIMARY KEY (p, c)") as table:
         stmt = cql.prepare(f"insert into {table} (p, c, v) values (?, ?, ?)")
         N = 10
-        ps = [unique_key_int() for i in range(N)]
+        ps = [unique_key_int() for _ in range(N)]
         for i in range(N):
             cql.execute(stmt, [ps[i], 1, 7])
             cql.execute(stmt, [ps[i], 2, 7])

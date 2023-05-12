@@ -21,11 +21,9 @@ import sys
 RELOC_PREFIX='scylla'
 def reloc_add(self, name, arcname=None, recursive=True, *, filter=None):
     if arcname:
-        return self.add(name, arcname="{}/{}".format(RELOC_PREFIX, arcname),
-                        filter=filter)
+        return self.add(name, arcname=f"{RELOC_PREFIX}/{arcname}", filter=filter)
     else:
-        return self.add(name, arcname="{}/{}".format(RELOC_PREFIX, name),
-                        filter=filter)
+        return self.add(name, arcname=f"{RELOC_PREFIX}/{name}", filter=filter)
 
 tarfile.TarFile.reloc_add = reloc_add
 
@@ -40,30 +38,33 @@ def ldd(executable):
             universal_newlines=True).splitlines():
         elements = ldd_line.split()
         if ldd_line.endswith('not found'):
-            raise Exception('ldd {}: could not resolve {}'.format(executable, elements[0]))
+            raise Exception(f'ldd {executable}: could not resolve {elements[0]}')
         if elements[1] != '=>':
             if elements[0].startswith('linux-vdso.so'):
                 # provided by kernel
                 continue
             libraries['ld.so'] = os.path.realpath(elements[0])
-        elif '//' in elements[0]:
-            # We know that the only DSO with a // in the path is the
-            # dynamic linker used by scylla, which is the same ld.so
-            # above.
-            pass
-        else:
+        elif '//' not in elements[0]:
             libraries[elements[0]] = os.path.realpath(elements[2])
     return libraries
 
 def filter_dist(info):
-    for x in ['dist/ami/files/', 'dist/ami/packer', 'dist/ami/variables.json']:
-        if info.name.startswith(x):
-            return None
-    return info
+    return next(
+        (
+            None
+            for x in [
+                'dist/ami/files/',
+                'dist/ami/packer',
+                'dist/ami/variables.json',
+            ]
+            if info.name.startswith(x)
+        ),
+        info,
+    )
 
 SCYLLA_DIR='scylla-package'
 def reloc_add(ar, name, arcname=None):
-    ar.add(name, arcname="{}/{}".format(SCYLLA_DIR, arcname if arcname else name))
+    ar.add(name, arcname=f"{SCYLLA_DIR}/{arcname if arcname else name}")
 
 ap = argparse.ArgumentParser(description='Create a relocatable scylla package.')
 ap.add_argument('dest',
@@ -77,9 +78,7 @@ ap.add_argument('--print-libexec', action='store_true',
 
 args = ap.parse_args()
 
-executables_scylla = [
-                'build/{}/scylla'.format(args.mode),
-                'build/{}/iotune'.format(args.mode)]
+executables_scylla = [f'build/{args.mode}/scylla', f'build/{args.mode}/iotune']
 executables_distrocmd = [
                 '/usr/bin/patchelf',
                 '/usr/bin/lscpu',
@@ -103,15 +102,14 @@ output = args.dest
 
 libs = {}
 for exe in executables:
-    libs.update(ldd(exe))
+    libs |= ldd(exe)
 
 # manually add libthread_db for debugging thread
-libs.update({'libthread_db.so.1': os.path.realpath('/lib64/libthread_db.so')})
+libs['libthread_db.so.1'] = os.path.realpath('/lib64/libthread_db.so')
 
 ld_so = libs['ld.so']
 
-have_gnutls = any([lib.startswith('libgnutls.so')
-                   for lib in libs.keys()])
+have_gnutls = any(lib.startswith('libgnutls.so') for lib in libs)
 
 # Although tarfile.open() can write directly to a compressed tar by using
 # the "w|gz" mode, it does so using a slow Python implementation. It is as
@@ -119,7 +117,9 @@ have_gnutls = any([lib.startswith('libgnutls.so')
 # command. We can complete the compression even faster by using the pigz
 # command - a parallel implementation of gzip utilizing all processors
 # instead of just one.
-gzip_process = subprocess.Popen("pigz > "+output, shell=True, stdin=subprocess.PIPE)
+gzip_process = subprocess.Popen(
+    f"pigz > {output}", shell=True, stdin=subprocess.PIPE
+)
 
 ar = tarfile.open(fileobj=gzip_process.stdin, mode='w|')
 # relocatable package format version = 3.0
@@ -140,7 +140,7 @@ for exe in executables_distrocmd:
     ar.reloc_add(exe, arcname=f'libexec/{basename}')
 
 for lib, libfile in libs.items():
-    ar.reloc_add(libfile, arcname='libreloc/' + lib)
+    ar.reloc_add(libfile, arcname=f'libreloc/{lib}')
 if have_gnutls:
     gnutls_config_nolink = os.path.realpath('/etc/crypto-policies/back-ends/gnutls.config')
     ar.reloc_add(gnutls_config_nolink, arcname='libreloc/gnutls.config')

@@ -20,7 +20,7 @@ from cassandra.cluster import Cluster, ConsistencyLevel, ExecutionProfile, EXEC_
 from cassandra.policies import RoundRobinPolicy
 
 def random_string(length=10, chars=string.ascii_uppercase + string.digits):
-    return ''.join(random.choice(chars) for x in range(length))
+    return ''.join(random.choice(chars) for _ in range(length))
 
 def random_bytes(length=10):
     return bytearray(random.getrandbits(8) for _ in range(length))
@@ -46,7 +46,7 @@ unique_name.last_ms = 0
 # guarantee uniqueness.
 def unique_key_string():
     unique_key_string.i += 1
-    return 's' + str(unique_key_string.i)
+    return f's{unique_key_string.i}'
 unique_key_string.i = 0
 
 def unique_key_int():
@@ -61,11 +61,11 @@ unique_key_int.i = 0
 @contextmanager
 def new_test_keyspace(cql, opts):
     keyspace = unique_name()
-    cql.execute("CREATE KEYSPACE " + keyspace + " " + opts)
+    cql.execute(f"CREATE KEYSPACE {keyspace} {opts}")
     try:
         yield keyspace
     finally:
-        cql.execute("DROP KEYSPACE " + keyspace)
+        cql.execute(f"DROP KEYSPACE {keyspace}")
 
 # A utility function for creating a new temporary table with a given schema.
 # Because Scylla becomes slower when a huge number of uniquely-named tables
@@ -81,23 +81,23 @@ def new_test_table(cql, keyspace, schema, extra=""):
     if not previously_used_table_names:
         previously_used_table_names.append(unique_name())
     table_name = previously_used_table_names.pop()
-    table = keyspace + "." + table_name
-    cql.execute("CREATE TABLE " + table + "(" + schema + ")" + extra)
+    table = f"{keyspace}.{table_name}"
+    cql.execute(f"CREATE TABLE {table}({schema}){extra}")
     try:
         yield table
     finally:
-        cql.execute("DROP TABLE " + table)
+        cql.execute(f"DROP TABLE {table}")
         previously_used_table_names.append(table_name)
 
 # A utility function for creating a new temporary user-defined type.
 @contextmanager
 def new_type(cql, keyspace, cmd):
-    type_name = keyspace + "." + unique_name()
-    cql.execute("CREATE TYPE " + type_name + " " + cmd)
+    type_name = f"{keyspace}.{unique_name()}"
+    cql.execute(f"CREATE TYPE {type_name} {cmd}")
     try:
         yield type_name
     finally:
-        cql.execute("DROP TYPE " + type_name)
+        cql.execute(f"DROP TYPE {type_name}")
 
 # A utility function for creating a new temporary user-defined function.
 @contextmanager
@@ -127,7 +127,7 @@ def new_aggregate(cql, keyspace, body):
 @contextmanager
 def new_materialized_view(cql, table, select, pk, where, extra=""):
     keyspace = table.split('.')[0]
-    mv = keyspace + "." + unique_name()
+    mv = f"{keyspace}.{unique_name()}"
     cql.execute(f"CREATE MATERIALIZED VIEW {mv} AS SELECT {select} FROM {table} WHERE {where} PRIMARY KEY ({pk}) {extra}")
     try:
         yield mv
@@ -160,12 +160,7 @@ def cql_session(host, port, is_ssl, username, password):
         # request (e.g., a DROP KEYSPACE needing to drop multiple tables)
         # 10 seconds may not be enough, so let's increase it. See issue #7838.
         request_timeout = 120)
-    if is_ssl:
-        # Scylla does not support any earlier TLS protocol. If you try,
-        # you will get mysterious EOF errors (see issue #6971) :-(
-        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-    else:
-        ssl_context = None
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2) if is_ssl else None
     cluster = Cluster(execution_profiles={EXEC_PROFILE_DEFAULT: profile},
         contact_points=[host],
         port=int(port),
@@ -237,13 +232,13 @@ def local_process_id(cql):
     # other is listening on address 0 (INADDR_ANY).
     ip2hex = lambda ip: ''.join([f'{int(x):02X}' for x in reversed(ip.split('.'))])
     port2hex = lambda port: f'{int(port):04X}'
-    addr1 = ip2hex(ip) + ':' + port2hex(port)
+    addr1 = f'{ip2hex(ip)}:{port2hex(port)}'
     addr2 = ip2hex('0.0.0.0') + ':' + port2hex(port)
     LISTEN = '0A'
     with open('/proc/net/tcp', 'r') as f:
         for line in f:
             cols = line.split()
-            if cols[3] == LISTEN and (cols[1] == addr1 or cols[1] == addr2):
+            if cols[3] == LISTEN and cols[1] in [addr1, addr2]:
                 inode = cols[9]
                 break
         else:

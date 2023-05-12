@@ -24,7 +24,7 @@ def test_build_view_with_large_row(cql, test_keyspace):
         try:
             retrieved_row = False
             for _ in range(50):
-                res = [row for row in cql.execute(f"SELECT * FROM {test_keyspace}.{mv}")]
+                res = list(cql.execute(f"SELECT * FROM {test_keyspace}.{mv}"))
                 if len(res) == 1 and res[0].v == big:
                     retrieved_row = True
                     break
@@ -44,7 +44,7 @@ def test_update_view_with_large_row(cql, test_keyspace):
         try:
             big = 'x'*11*1024*1024
             cql.execute(f"INSERT INTO {table}(p,c,v) VALUES (1,1,'{big}')")
-            res = [row for row in cql.execute(f"SELECT * FROM {test_keyspace}.{mv}")]
+            res = list(cql.execute(f"SELECT * FROM {test_keyspace}.{mv}"))
             assert len(res) == 1 and res[0].v == big
         finally:
             cql.execute(f"DROP MATERIALIZED VIEW {test_keyspace}.{mv}")
@@ -187,11 +187,11 @@ def test_mv_is_not_null(cql, test_keyspace):
             # The view row should disappear and reappear if its key is
             # changed to null and back in the base table:
             cql.execute(f"UPDATE {table} SET v=null WHERE p=123")
-            assert list(cql.execute(f"SELECT * FROM {mv}")) == []
+            assert not list(cql.execute(f"SELECT * FROM {mv}"))
             cql.execute(f"UPDATE {table} SET v='cat' WHERE p=123")
             assert list(cql.execute(f"SELECT * FROM {mv}")) == [('cat', 123)]
             cql.execute(f"DELETE v FROM {table} WHERE p=123")
-            assert list(cql.execute(f"SELECT * FROM {mv}")) == []
+            assert not list(cql.execute(f"SELECT * FROM {mv}"))
 
 # Refs #10851. The code used to create a wildcard selection for all columns,
 # which erroneously also includes static columns if such are present in the
@@ -356,9 +356,6 @@ def test_oversized_base_regular_view_key(cql, test_keyspace, cassandra_bug):
 # but we do expect it to skip the problematic row and continue to complete
 # the rest of the vew build.
 @pytest.mark.xfail(reason="issue #8627")
-# This test currently breaks the build (it repeats a failing build step,
-# and never complete) and we cannot quickly recognize this failure, so
-# to avoid a very slow failure, we currently "skip" this test.
 @pytest.mark.skip(reason="issue #8627, fails very slow")
 def test_oversized_base_regular_view_key_build(cql, test_keyspace, cassandra_bug):
     with new_test_table(cql, test_keyspace, 'p int primary key, v text') as table:
@@ -382,7 +379,7 @@ def test_oversized_base_regular_view_key_build(cql, test_keyspace, cassandra_bug
                 results = set(list(cql.execute(f'SELECT * from {mv}')))
                 # The oversized "big" cannot be a key in the view, so
                 # shouldn't be in results:
-                assert not (big, 30) in results
+                assert (big, 30) not in results
                 print(results)
                 # The rest of the items in the base table should be in
                 # the view:
@@ -540,7 +537,7 @@ def test_view_update_and_alter_base(cql, test_keyspace, scylla_only):
             cql.execute(f"ALTER TABLE {table} WITH COMMENT = '{unique_name()}'")
             # Try to modify an item. This failed in #11542.
             cql.execute(f'UPDATE {table} SET v=-1 WHERE p=1')
-            assert len(list(cql.execute(f"SELECT v from {mv}"))) == 0
+            assert not list(cql.execute(f"SELECT v from {mv}"))
 
 # Reproducer for issue #12297, reproducing a specific way in which a view
 # table could be made inconsistent with the base table:
@@ -642,8 +639,8 @@ def test_mv_long_delete(cql, test_keyspace):
             for i in range(size):
                 cql.execute(f'INSERT INTO {table} (p,c,x,y) VALUES (1,{i},{i},{i})')
             cql.execute(f'DELETE FROM {table} WHERE p=1')
-            assert list(cql.execute(f"SELECT c FROM {table} WHERE p = 1")) == []
-            assert list(cql.execute(f"SELECT c FROM {mv} WHERE p = 1")) == []
+            assert not list(cql.execute(f"SELECT c FROM {table} WHERE p = 1"))
+            assert not list(cql.execute(f"SELECT c FROM {mv} WHERE p = 1"))
 
 # Several tests for how "CLUSTERING ORDER BY" interacts with materialized
 # views:
@@ -794,16 +791,18 @@ def test_mv_with_only_primary_key_rows(scylla_only, cql, test_keyspace):
         # Use a synchronous view so we don't have to worry about races between flush and
         # view updates.
         with new_materialized_view(cql, table=base, select='id', pk='id', where='id IS NOT NULL',
-                extra='WITH synchronous_updates = true') as view:
+                        extra='WITH synchronous_updates = true') as view:
             cql.execute(f'INSERT INTO {base} (id, v1) VALUES (1, 0)')
             cql.execute(f'INSERT INTO {base} (id, v2) VALUES (2, 0)')
             cql.execute(f'INSERT INTO {base} (id) VALUES (3)')
             # The following row is kept alive by the liveness of v1, since it doesn't have a row marker
             cql.execute(f'UPDATE {base} SET v1 = 7 WHERE id = 4')
             nodetool.flush(cql, view)
-            assert(set([row.id for row in cql.execute(f'SELECT id FROM {view}')]) == set([1, 2, 3, 4]))
+            assert {
+                row.id for row in cql.execute(f'SELECT id FROM {view}')
+            } == {1, 2, 3, 4}
             # Remove that special row 4
             cql.execute(f'DELETE v1 FROM {base} WHERE id = 4')
             nodetool.flush(cql, view)
-            assert(set([row.id for row in cql.execute(f'SELECT id FROM {view}')]) == set([1, 2, 3]))
+            assert {row.id for row in cql.execute(f'SELECT id FROM {view}')} == {1, 2, 3}
             # We now believe that empty value serialization/deserialization is correct

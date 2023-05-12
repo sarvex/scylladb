@@ -28,7 +28,9 @@ def test_filter_on_unset(cql, test_keyspace):
         assert list(cql.execute(f"SELECT a FROM {table} WHERE b<0 ALLOW FILTERING")) == [(3,)]
         cql.execute(f"ALTER TABLE {table} ADD c int")
         cql.execute(f"INSERT INTO {table} (a, b,c ) VALUES (4, 5, 6)")
-        assert list(cql.execute(f"SELECT a FROM {table} WHERE c<0 ALLOW FILTERING")) == []
+        assert not list(
+            cql.execute(f"SELECT a FROM {table} WHERE c<0 ALLOW FILTERING")
+        )
         assert list(cql.execute(f"SELECT a FROM {table} WHERE c>0 ALLOW FILTERING")) == [(4,)]
 
 # Reproducers for issue #8203, which test a scan (whole-table or single-
@@ -126,7 +128,7 @@ def test_index_with_in_relation(scylla_only, cql, test_keyspace):
                 (2,0,True),(2,1,False),(2,2,True),(2,3,False)]:
             cql.execute(f"insert into {table} (p,c,v) values ({p}, {c}, {v})")
         res = cql.execute(f"select * from {table} where p in (0,1) and v = False ALLOW FILTERING")
-        assert set(res) == set([(0,1,False),(0,3,False),(1,1,False), (1,3,False)])
+        assert set(res) == {(0,1,False), (0,3,False), (1,1,False), (1,3,False)}
 
 # Test that IN restrictions are supported with filtering and return the
 # correct results.
@@ -144,13 +146,13 @@ def test_filtering_with_in_relation(cql, test_keyspace, cassandra_bug):
         cql.execute(f"INSERT INTO {table} (p1, p2, c, v) VALUES (3, 4, 5, 6)")
         cql.execute(f"INSERT INTO {table} (p1, p2, c, v) VALUES (4, 5, 6, 7)")
         res = cql.execute(f"select * from {table} where p1 in (2,4) ALLOW FILTERING")
-        assert set(res) == set([(2,3,4,5), (4,5,6,7)])
+        assert set(res) == {(2,3,4,5), (4,5,6,7)}
         res = cql.execute(f"select * from {table} where p2 in (2,4) ALLOW FILTERING")
-        assert set(res) == set([(1,2,3,4), (3,4,5,6)])
+        assert set(res) == {(1,2,3,4), (3,4,5,6)}
         res = cql.execute(f"select * from {table} where c in (3,5) ALLOW FILTERING")
-        assert set(res) == set([(1,2,3,4), (3,4,5,6)])
+        assert set(res) == {(1,2,3,4), (3,4,5,6)}
         res = cql.execute(f"select * from {table} where v in (5,7) ALLOW FILTERING")
-        assert set(res) == set([(2,3,4,5), (4,5,6,7)])
+        assert set(res) == {(2,3,4,5), (4,5,6,7)}
 
 # Test that subscripts in expressions work as expected. They should only work
 # on map columns, and must have the correct type. Test that they also work
@@ -171,7 +173,7 @@ def test_filtering_with_in_relation(cql, test_keyspace, cassandra_bug):
 # Also test list subscripts. These also don't work in Cassandra.
 def test_filtering_with_subscript(cql, test_keyspace, cassandra_bug):
     with new_test_table(cql, test_keyspace,
-            "p int, m1 map<int, int>, m2 map<text, text>, s set<int>, l list<text>, PRIMARY KEY (p)") as table:
+                "p int, m1 map<int, int>, m2 map<text, text>, s set<int>, l list<text>, PRIMARY KEY (p)") as table:
         # Check for *errors* in subscript expressions - such as wrong type or
         # null - with an empty table. This will force the implementation to
         # check for these errors before actually evaluating the filter
@@ -188,14 +190,22 @@ def test_filtering_with_subscript(cql, test_keyspace, cassandra_bug):
         # See discussion of m1[null] above. Reproduces #10361, and fails
         # on Cassandra (Cassandra deliberately returns an error here -
         # an InvalidRequest with "Unsupported null map key for column m1"
-        assert list(cql.execute(f"select p from {table} where m1[null] = 2 ALLOW FILTERING")) == []
-        assert list(cql.execute(f"select p from {table} where m2[null] = 'hi' ALLOW FILTERING")) == []
+        assert not list(
+            cql.execute(
+                f"select p from {table} where m1[null] = 2 ALLOW FILTERING"
+            )
+        )
+        assert not list(
+            cql.execute(
+                f"select p from {table} where m2[null] = 'hi' ALLOW FILTERING"
+            )
+        )
         # Similar to above checks, but using a prepared statement. We can't
         # cause the driver to send the wrong type to a bound variable, so we
         # can't check that case unfortunately, but we have a new UNSET_VALUE
         # case.
         stmt = cql.prepare(f"select p from {table} where m1[?] = 2 ALLOW FILTERING")
-        assert list(cql.execute(stmt, [None])) == []
+        assert not list(cql.execute(stmt, [None]))
         # The expression m1[UNSET_VALUE] should be an error, but because the
         # table is empty, we do not actually need to evaluate the expression
         # and the error might might not be caught. So this test is commented
@@ -206,8 +216,14 @@ def test_filtering_with_subscript(cql, test_keyspace, cassandra_bug):
 
         # Finally, check for sucessful filtering with subscripts. For that we
         # need to add some data:
-        cql.execute("INSERT INTO "+table+" (p, m1, m2) VALUES (1, {1:2, 3:4}, {'dog':'cat', 'hi':'hello'})")
-        cql.execute("INSERT INTO "+table+" (p, m1, m2) VALUES (2, {2:3, 4:5}, {'man':'woman', 'black':'white'})")
+        cql.execute(
+            f"INSERT INTO {table}"
+            + " (p, m1, m2) VALUES (1, {1:2, 3:4}, {'dog':'cat', 'hi':'hello'})"
+        )
+        cql.execute(
+            f"INSERT INTO {table}"
+            + " (p, m1, m2) VALUES (2, {2:3, 4:5}, {'man':'woman', 'black':'white'})"
+        )
         res = cql.execute(f"select p from {table} where m1[1] = 2 ALLOW FILTERING")
         assert list(res) == [(1,)]
         res = cql.execute(f"select p from {table} where m2['black'] = 'white' ALLOW FILTERING")
@@ -219,7 +235,11 @@ def test_filtering_with_subscript(cql, test_keyspace, cassandra_bug):
         # earlier when there was no data in the table. Now there is, and
         # the scan brings up several rows, it may exercise different code
         # paths.
-        assert list(cql.execute(f"select p from {table} where m1[null] = 2 ALLOW FILTERING")) == []
+        assert not list(
+            cql.execute(
+                f"select p from {table} where m1[null] = 2 ALLOW FILTERING"
+            )
+        )
         with pytest.raises(InvalidRequest, match='unset'):
             cql.execute(stmt, [UNSET_VALUE])
 
@@ -228,11 +248,11 @@ def test_filtering_with_subscript(cql, test_keyspace, cassandra_bug):
         res = cql.execute(f"SELECT p FROM {table} WHERE l[1] = 'one' ALLOW FILTERING")
         assert list(res) == [(11,)]
         res = cql.execute(f"SELECT p FROM {table} WHERE l[1] = 'eight' ALLOW FILTERING")
-        assert list(res) == []
+        assert not list(res)
         res = cql.execute(f"SELECT p FROM {table} WHERE l[-5] = 'minus five' ALLOW FILTERING")
-        assert list(res) == []
+        assert not list(res)
         res = cql.execute(f"SELECT p FROM {table} WHERE l[3] = 'three' ALLOW FILTERING")
-        assert list(res) == []
+        assert not list(res)
 
         # check list filtering type checking
         with pytest.raises(InvalidRequest, match=re.escape('Invalid STRING constant')):
@@ -245,7 +265,7 @@ def test_filtering_with_subscript(cql, test_keyspace, cassandra_bug):
         res = cql.execute(f"SELECT p FROM {table} WHERE l[1] = 'one' ALLOW FILTERING")
         assert list(res) == [(11,)]
         res = cql.execute(f"SELECT p FROM {table} WHERE l[NULL] = 'one' ALLOW FILTERING")
-        assert list(res) == []
+        assert not list(res)
 
 # Beyond the tests of map subscript expressions above, also test what happens
 # when the expression is fine (e.g., m[2] = 3) but the *data* itself is null.
@@ -257,7 +277,11 @@ def test_filtering_null_map_with_subscript(cql, test_keyspace):
     schema = 'p text primary key, m map<int, int>'
     with new_test_table(cql, test_keyspace, schema) as table:
         cql.execute(f"INSERT INTO {table} (p) VALUES ('dog')")
-        assert list(cql.execute(f"SELECT p FROM {table} WHERE m[2] = 3 ALLOW FILTERING")) == []
+        assert not list(
+            cql.execute(
+                f"SELECT p FROM {table} WHERE m[2] = 3 ALLOW FILTERING"
+            )
+        )
 
 # Test whether it is allowed to specify more than on restriction on the same
 # column. For example, "c=0 and c>0".
@@ -280,20 +304,40 @@ def test_multiple_restrictions_on_same_column(cql, test_keyspace, scylla_only):
         cql.execute(f"INSERT INTO {table} (p,c) VALUES ({p}, 0)")
         cql.execute(f"INSERT INTO {table} (p,c) VALUES ({p}, 1)")
         cql.execute(f"INSERT INTO {table} (p,c) VALUES ({p}, 2)")
-        assert list(cql.execute(f"SELECT c FROM {table} WHERE p = {p} and c = 0 and c > 0")) == []
-        assert list(cql.execute(f"SELECT c FROM {table} WHERE p = {p} and c > 0 and c = 0")) == []
+        assert not list(
+            cql.execute(
+                f"SELECT c FROM {table} WHERE p = {p} and c = 0 and c > 0"
+            )
+        )
+        assert not list(
+            cql.execute(
+                f"SELECT c FROM {table} WHERE p = {p} and c > 0 and c = 0"
+            )
+        )
         assert list(cql.execute(f"SELECT c FROM {table} WHERE p = {p} and c = 1 and c > 0")) == [(1,)]
         assert list(cql.execute(f"SELECT c FROM {table} WHERE p = {p} and c > 0 and c = 1")) == [(1,)]
         assert list(cql.execute(f"SELECT c FROM {table} WHERE p = {p} and c = 1 and c = 1")) == [(1,)]
-        assert list(cql.execute(f"SELECT c FROM {table} WHERE p = {p} and c = 0 and c = 1")) == []
+        assert not list(
+            cql.execute(
+                f"SELECT c FROM {table} WHERE p = {p} and c = 0 and c = 1"
+            )
+        )
         assert list(cql.execute(f"SELECT c FROM {table} WHERE p = {p} and c > 0 and c > 1")) == [(2,)]
         assert list(cql.execute(f"SELECT c FROM {table} WHERE p = {p} and c > 1 and c > 0")) == [(2,)]
         assert list(cql.execute(f"SELECT c FROM {table} WHERE p = {p} and c = 1 and c >= 1")) == [(1,)]
         assert list(cql.execute(f"SELECT c FROM {table} WHERE p = {p} and c >= 1 and c = 1")) == [(1,)]
-        assert list(cql.execute(f"SELECT c FROM {table} WHERE p = {p} and c > 1 and c < 1")) == []
+        assert not list(
+            cql.execute(
+                f"SELECT c FROM {table} WHERE p = {p} and c > 1 and c < 1"
+            )
+        )
         assert list(cql.execute(f"SELECT c FROM {table} WHERE p = {p} and c >= 1 and c <= 1")) == [(1,)]
         assert list(cql.execute(f"SELECT c FROM {table} WHERE p = {p} and c >= 1 and c <= 2")) == [(1,),(2,)]
-        assert list(cql.execute(f"SELECT c FROM {table} WHERE p = {p} and c = 1 and c in (2, 3)")) == []
+        assert not list(
+            cql.execute(
+                f"SELECT c FROM {table} WHERE p = {p} and c = 1 and c in (2, 3)"
+            )
+        )
         assert list(cql.execute(f"SELECT c FROM {table} WHERE p = {p} and c = 2 and c in (2, 3)")) == [(2,)]
 
 # Cassandra does not allow IN restrictions on non-primary-key columns,

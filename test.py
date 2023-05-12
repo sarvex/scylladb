@@ -42,8 +42,8 @@ from typing import Dict, List, Callable, Any, Iterable, Optional, Awaitable, Uni
 
 output_is_a_tty = sys.stdout.isatty()
 
-all_modes = set(['debug', 'release', 'dev', 'sanitize', 'coverage'])
-debug_modes = set(['debug', 'sanitize'])
+all_modes = {'debug', 'release', 'dev', 'sanitize', 'coverage'}
+debug_modes = {'debug', 'sanitize'}
 
 
 def create_formatter(*decorators) -> Callable[[Any], str]:
@@ -88,7 +88,7 @@ class TestSuite(ABC):
 
     def __init__(self, path: str, cfg: dict, options: argparse.Namespace, mode: str) -> None:
         self.suite_path = pathlib.Path(path)
-        self.name = str(self.suite_path.name)
+        self.name = self.suite_path.name
         self.cfg = cfg
         self.options = options
         self.mode = mode
@@ -103,7 +103,7 @@ class TestSuite(ABC):
         # Skip tests disabled in suite.yaml
         self.disabled_tests = set(self.cfg.get("disable", []))
         # Skip tests disabled in specific mode.
-        self.disabled_tests.update(self.cfg.get("skip_in_" + mode, []))
+        self.disabled_tests.update(self.cfg.get(f"skip_in_{mode}", []))
         self.flaky_tests = set(self.cfg.get("flaky", []))
         # If this mode is one of the debug modes, and there are
         # tests disabled in a debug mode, add these tests to the skip list.
@@ -115,11 +115,11 @@ class TestSuite(ABC):
         # which are listed explicitly in some run_in_<m> where m != mode
         # This of course may create ambiguity with skip_* settings,
         # since the priority of the two is undefined, but oh well.
-        run_in_m = set(self.cfg.get("run_in_" + mode, []))
+        run_in_m = set(self.cfg.get(f"run_in_{mode}", []))
         for a in all_modes:
             if a == mode:
                 continue
-            skip_in_m = set(self.cfg.get("run_in_" + a, []))
+            skip_in_m = set(self.cfg.get(f"run_in_{a}", []))
             self.disabled_tests.update(skip_in_m - run_in_m)
 
     # Generate a unique ID for `--repeat`ed tests
@@ -144,7 +144,7 @@ class TestSuite(ABC):
         with open(os.path.join(path, "suite.yaml"), "r") as cfg_file:
             cfg = yaml.safe_load(cfg_file.read())
             if not isinstance(cfg, dict):
-                raise RuntimeError("Failed to load tests in {}: suite.yaml is empty".format(path))
+                raise RuntimeError(f"Failed to load tests in {path}: suite.yaml is empty")
             return cfg
 
     @staticmethod
@@ -164,7 +164,7 @@ class TestSuite(ABC):
                     suite_type = "CQLApproval"
                 else:
                     suite_type = suite_type.title()
-                return suite_type + "TestSuite"
+                return f"{suite_type}TestSuite"
 
             SpecificTestSuite = globals().get(suite_type_to_class_name(kind))
             if not SpecificTestSuite:
@@ -241,7 +241,7 @@ class TestSuite(ABC):
             for p in patterns:
                 if p in t:
                     pending.add(asyncio.create_task(add_test(shortname)))
-        if len(pending) == 0:
+        if not pending:
             return
         try:
             await asyncio.gather(*pending)
@@ -340,7 +340,7 @@ class PythonTestSuite(TestSuite):
         if self.mode == "coverage":
             self.scylla_env = coverage.env(self.scylla_exe, distinct_id=self.name)
         else:
-            self.scylla_env = dict()
+            self.scylla_env = {}
         self.scylla_env['SCYLLA'] = self.scylla_exe
 
         cluster_size = self.cfg.get("cluster_size", 1)
@@ -477,7 +477,7 @@ class RunTestSuite(TestSuite):
         if self.mode == "coverage":
             self.scylla_env = coverage.env(self.scylla_exe, distinct_id=self.name)
         else:
-            self.scylla_env = dict()
+            self.scylla_env = {}
         self.scylla_env['SCYLLA'] = self.scylla_exe
 
     async def add_test(self, shortname) -> None:
@@ -503,8 +503,10 @@ class Test:
         self.mode = suite.mode
         self.suite = suite
         # Unique file name, which is also readable by human, as filename prefix
-        self.uname = "{}.{}.{}".format(self.suite.name, self.shortname, self.id)
-        self.log_filename = pathlib.Path(suite.options.tmpdir) / self.mode / (self.uname + ".log")
+        self.uname = f"{self.suite.name}.{self.shortname}.{self.id}"
+        self.log_filename = (
+            pathlib.Path(suite.options.tmpdir) / self.mode / f"{self.uname}.log"
+        )
         self.log_filename.parent.mkdir(parents=True, exist_ok=True)
         self.is_flaky = self.shortname in suite.flaky_tests
         # True if the test was retried after it failed
@@ -542,15 +544,11 @@ class Test:
         """Check and trim logs and xml output for tests which have it"""
         if trim:
             self.log_filename.unlink()
-        pass
 
     def write_junit_failure_report(self, xml_res: ET.Element) -> None:
         assert not self.success
         xml_fail = ET.SubElement(xml_res, 'failure')
-        xml_fail.text = "Test {} {} failed, check the log at {}".format(
-            self.path,
-            " ".join(self.args),
-            self.log_filename)
+        xml_fail.text = f'Test {self.path} {" ".join(self.args)} failed, check the log at {self.log_filename}'
         if self.log_filename.exists():
             system_out = ET.SubElement(xml_res, 'system-out')
             system_out.text = read_log(self.log_filename)
@@ -566,10 +564,7 @@ class UnitTest(Test):
         super().__init__(test_no, shortname, suite)
         self.path = os.path.join("build", self.mode, "test", self.name)
         self.args = shlex.split(args) + UnitTest.standard_args
-        if self.mode == "coverage":
-            self.env = coverage.env(self.path)
-        else:
-            self.env = dict()
+        self.env = coverage.env(self.path) if self.mode == "coverage" else {}
         UnitTest._reset(self)
 
     def _reset(self) -> None:
@@ -577,7 +572,7 @@ class UnitTest(Test):
         pass
 
     def print_summary(self) -> None:
-        print("Output of {} {}:".format(self.path, " ".join(self.args)))
+        print(f'Output of {self.path} {" ".join(self.args)}:')
         print(read_log(self.log_filename))
 
     async def run(self, options) -> Test:
@@ -593,12 +588,16 @@ class BoostTest(UnitTest):
                  casename: Optional[str], allows_compaction_groups : bool) -> None:
         boost_args = []
         if casename:
-            shortname += '.' + casename
-            boost_args += ['--run_test=' + casename]
+            shortname += f'.{casename}'
+            boost_args += [f'--run_test={casename}']
         super().__init__(test_no, shortname, suite, args)
-        self.xmlout = os.path.join(suite.options.tmpdir, self.mode, "xml", self.uname + ".xunit.xml")
-        boost_args += ['--report_level=no',
-                       '--logger=HRF,test_suite:XML,test_suite,' + self.xmlout]
+        self.xmlout = os.path.join(
+            suite.options.tmpdir, self.mode, "xml", f"{self.uname}.xunit.xml"
+        )
+        boost_args += [
+            '--report_level=no',
+            f'--logger=HRF,test_suite:XML,test_suite,{self.xmlout}',
+        ]
         boost_args += ['--catch_system_errors=no']  # causes undebuggable cores
         boost_args += ['--color_output=false']
         boost_args += ['--']
@@ -661,10 +660,12 @@ class CQLApprovalTest(Test):
         super().__init__(test_no, shortname, suite)
         # Path to cql_repl driver, in the given build mode
         self.path = "pytest"
-        self.cql = suite.suite_path / (self.shortname + ".cql")
-        self.result = suite.suite_path / (self.shortname + ".result")
-        self.tmpfile = os.path.join(suite.options.tmpdir, self.mode, self.uname + ".reject")
-        self.reject = suite.suite_path / (self.shortname + ".reject")
+        self.cql = suite.suite_path / f"{self.shortname}.cql"
+        self.result = suite.suite_path / f"{self.shortname}.result"
+        self.tmpfile = os.path.join(
+            suite.options.tmpdir, self.mode, f"{self.uname}.reject"
+        )
+        self.reject = suite.suite_path / f"{self.shortname}.reject"
         self.server_log: Optional[str] = None
         self.server_log_filename: Optional[pathlib.Path] = None
         CQLApprovalTest._reset(self)
@@ -680,22 +681,22 @@ class CQLApprovalTest(Test):
         self.unidiff: Optional[str] = None
         self.server_log = None
         self.server_log_filename = None
-        self.env: Dict[str, str] = dict()
+        self.env: Dict[str, str] = {}
         old_tmpfile = pathlib.Path(self.tmpfile)
         if old_tmpfile.exists():
             old_tmpfile.unlink()
         self.args = [
-            "-s",  # don't capture print() inside pytest
+            "-s",
             "test/pylib/cql_repl/cql_repl.py",
-            "--input={}".format(self.cql),
-            "--output={}".format(self.tmpfile),
+            f"--input={self.cql}",
+            f"--output={self.tmpfile}",
         ]
 
     async def run(self, options: argparse.Namespace) -> Test:
         self.success = False
         self.summary = "failed"
 
-        loggerPrefix = self.mode + '/' + self.uname
+        loggerPrefix = f'{self.mode}/{self.uname}'
         logger = LogPrefixAdapter(logging.getLogger(loggerPrefix), {'prefix': loggerPrefix})
         def set_summary(summary):
             self.summary = summary
@@ -745,7 +746,7 @@ Check test log at {}.""".format(self.log_filename))
                 if self.is_executed_ok is False:
                     self.server_log = cluster.read_server_log()
                     self.server_log_filename = cluster.server_log_filename()
-                    if self.is_before_test_ok is False:
+                    if not self.is_before_test_ok:
                         set_summary("pre-check failed: {}".format(e))
                         print("Test {} {}".format(self.name, self.summary))
                         print("Server log  of the first server:\n{}".format(self.server_log))
@@ -765,8 +766,7 @@ Check test log at {}.""".format(self.log_filename))
         return self
 
     def print_summary(self) -> None:
-        print("Test {} ({}) {}".format(palette.path(self.name), self.mode,
-                                       self.summary))
+        print(f"Test {palette.path(self.name)} ({self.mode}) {self.summary}")
         if self.is_executed_ok is False:
             print(read_log(self.log_filename))
             if self.server_log is not None:
@@ -797,8 +797,10 @@ class RunTest(Test):
     def __init__(self, test_no: int, shortname: str, suite) -> None:
         super().__init__(test_no, shortname, suite)
         self.path = suite.suite_path / shortname
-        self.xmlout = os.path.join(suite.options.tmpdir, self.mode, "xml", self.uname + ".xunit.xml")
-        self.args = ["--junit-xml={}".format(self.xmlout)]
+        self.xmlout = os.path.join(
+            suite.options.tmpdir, self.mode, "xml", f"{self.uname}.xunit.xml"
+        )
+        self.args = [f"--junit-xml={self.xmlout}"]
         RunTest._reset(self)
 
     def _reset(self):
@@ -806,7 +808,7 @@ class RunTest(Test):
         pass
 
     def print_summary(self) -> None:
-        print("Output of {} {}:".format(self.path, " ".join(self.args)))
+        print(f'Output of {self.path} {" ".join(self.args)}:')
         print(read_log(self.log_filename))
 
     async def run(self, options: argparse.Namespace) -> Test:
@@ -822,25 +824,28 @@ class PythonTest(Test):
     def __init__(self, test_no: int, shortname: str, suite) -> None:
         super().__init__(test_no, shortname, suite)
         self.path = "pytest"
-        self.xmlout = os.path.join(self.suite.options.tmpdir, self.mode, "xml", self.uname + ".xunit.xml")
+        self.xmlout = os.path.join(
+            self.suite.options.tmpdir, self.mode, "xml", f"{self.uname}.xunit.xml"
+        )
         self.server_log: Optional[str] = None
         self.server_log_filename: Optional[pathlib.Path] = None
         PythonTest._reset(self)
 
     def _prepare_pytest_params(self, options: argparse.Namespace):
         self.args = [
-            "-s",  # don't capture print() output inside pytest
-            "--log-level=DEBUG",   # Capture logs
+            "-s",
+            "--log-level=DEBUG",
             "-o",
             "junit_family=xunit2",
-            "--junit-xml={}".format(self.xmlout)]
+            f"--junit-xml={self.xmlout}",
+        ]
         if options.markers:
             self.args.append(f"-m={options.markers}")
 
             # https://docs.pytest.org/en/7.1.x/reference/exit-codes.html
             no_tests_selected_exit_code = 5
             self.valid_exit_codes = [0, no_tests_selected_exit_code]
-        self.args.append(str(self.suite.suite_path / (self.shortname + ".py")))
+        self.args.append(str(self.suite.suite_path / f"{self.shortname}.py"))
 
     def _reset(self) -> None:
         """Reset the test before a retry, if it is retried as flaky"""
@@ -850,7 +855,7 @@ class PythonTest(Test):
         self.is_after_test_ok = False
 
     def print_summary(self) -> None:
-        print("Output of {} {}:".format(self.path, " ".join(self.args)))
+        print(f'Output of {self.path} {" ".join(self.args)}:')
         print(read_log(self.log_filename))
         if self.server_log is not None:
             print("Server log of the first server:")
@@ -860,13 +865,13 @@ class PythonTest(Test):
 
         self._prepare_pytest_params(options)
 
-        loggerPrefix = self.mode + '/' + self.uname
+        loggerPrefix = f'{self.mode}/{self.uname}'
         logger = LogPrefixAdapter(logging.getLogger(loggerPrefix), {'prefix': loggerPrefix})
         cluster = await self.suite.clusters.get(logger)
         try:
             cluster.before_test(self.uname)
             logger.info("Leasing Scylla cluster %s for test %s", cluster, self.uname)
-            self.args.insert(0, "--host={}".format(cluster.endpoint()))
+            self.args.insert(0, f"--host={cluster.endpoint()}")
             self.is_before_test_ok = True
             cluster.take_log_savepoint()
             status = await run_test(self, options)
@@ -876,14 +881,14 @@ class PythonTest(Test):
         except Exception as e:
             self.server_log = cluster.read_server_log()
             self.server_log_filename = cluster.server_log_filename()
-            if self.is_before_test_ok is False:
-                print("Test {} pre-check failed: {}".format(self.name, str(e)))
-                print("Server log of the first server:\n{}".format(self.server_log))
-                logger.info(f"Discarding cluster after failed start for test %s...", self.name)
-            elif self.is_after_test_ok is False:
-                print("Test {} post-check failed: {}".format(self.name, str(e)))
-                print("Server log of the first server:\n{}".format(self.server_log))
-                logger.info(f"Discarding cluster after failed test %s...", self.name)
+            if not self.is_before_test_ok:
+                print(f"Test {self.name} pre-check failed: {str(e)}")
+                print(f"Server log of the first server:\n{self.server_log}")
+                logger.info("Discarding cluster after failed start for test %s...", self.name)
+            elif not self.is_after_test_ok:
+                print(f"Test {self.name} post-check failed: {str(e)}")
+                print(f"Server log of the first server:\n{self.server_log}")
+                logger.info("Discarding cluster after failed test %s...", self.name)
         await self.suite.clusters.put(cluster, is_dirty=cluster.is_dirty)
         logger.info("Test %s %s", self.uname, "succeeded" if self.success else "failed ")
         return self
@@ -907,8 +912,8 @@ class TopologyTest(PythonTest):
         self._prepare_pytest_params(options)
 
         test_path = os.path.join(self.suite.options.tmpdir, self.mode)
-        async with get_cluster_manager(self.mode + '/' + self.uname, self.suite.clusters, test_path) as manager:
-            self.args.insert(0, "--manager-api={}".format(manager.sock_path))
+        async with get_cluster_manager(f'{self.mode}/{self.uname}', self.suite.clusters, test_path) as manager:
+            self.args.insert(0, f"--manager-api={manager.sock_path}")
 
             try:
                 # Note: start manager here so cluster (and its logs) is availale in case of failure
@@ -918,8 +923,8 @@ class TopologyTest(PythonTest):
                 self.server_log = manager.cluster.read_server_log()
                 self.server_log_filename = manager.cluster.server_log_filename()
                 if manager.is_before_test_ok is False:
-                    print("Test {} pre-check failed: {}".format(self.name, str(e)))
-                    print("Server log of the first server:\n{}".format(self.server_log))
+                    print(f"Test {self.name} pre-check failed: {str(e)}")
+                    print(f"Server log of the first server:\n{self.server_log}")
                     # Don't try to continue if the cluster is broken
                     raise
             manager.logger.info("Test %s %s", self.uname, "succeeded" if self.success else "failed ")
@@ -950,8 +955,7 @@ class TabularConsoleOutput:
         self.last_test_no += 1
         status = ""
         if test.success:
-            logging.debug("Test {} is flaky {}".format(test.uname,
-                                                       test.is_flaky_failure))
+            logging.debug(f"Test {test.uname} is flaky {test.is_flaky_failure}")
             if test.is_flaky_failure:
                 status = palette.warn("[ FLKY ]")
             else:
@@ -959,10 +963,11 @@ class TabularConsoleOutput:
         else:
             status = palette.fail("[ FAIL ]")
         msg = "{:10s} {:^8s} {:^7s} {:8s} {}".format(
-            "[{}/{}]".format(self.last_test_no, self.test_count),
-            test.suite.name, test.mode[:7],
+            f"[{self.last_test_no}/{self.test_count}]",
+            test.suite.name,
+            test.mode[:7],
             status,
-            test.uname
+            test.uname,
         )
         if self.verbose is False:
             if test.success:
@@ -990,6 +995,7 @@ async def run_test(test: Test, options: argparse.Namespace, gentle_kill=False, e
             msg += "{}\n".format(error)
             msg += "=== TEST.PY SUMMARY END ===\n"
             log.write(msg.encode(encoding="UTF-8"))
+
         process = None
         stdout = None
         logging.info("Starting test %s: %s %s", test.uname, test.path, " ".join(test.args))
@@ -1045,8 +1051,11 @@ async def run_test(test: Test, options: argparse.Namespace, gentle_kill=False, e
                 test.check_log(not options.save_log_on_success)
             except Exception as e:
                 print("")
-                print(test.name + ": " + palette.crit("failed to parse XML output: {}".format(e)))
-                # return False
+                print(
+                    f"{test.name}: "
+                    + palette.crit("failed to parse XML output: {}".format(e))
+                )
+                            # return False
             return True
         except (asyncio.TimeoutError, asyncio.CancelledError) as e:
             test.is_cancelled = True
@@ -1215,7 +1224,7 @@ async def find_tests(options: argparse.Namespace) -> None:
 
     if not TestSuite.test_count():
         if len(options.name):
-            print("Test {} not found".format(palette.path(options.name[0])))
+            print(f"Test {palette.path(options.name[0])} not found")
             sys.exit(1)
         else:
             print(palette.warn("No tests found. Please enable tests in ./configure.py first."))
@@ -1223,13 +1232,13 @@ async def find_tests(options: argparse.Namespace) -> None:
 
     logging.info("Found %d tests, repeat count is %d, starting %d concurrent jobs",
                  TestSuite.test_count(), options.repeat, options.jobs)
-    print("Found {} tests.".format(TestSuite.test_count()))
+    print(f"Found {TestSuite.test_count()} tests.")
 
 
 async def run_all_tests(signaled: asyncio.Event, options: argparse.Namespace) -> None:
     console = TabularConsoleOutput(options.verbose, TestSuite.test_count())
     signaled_task = asyncio.create_task(signaled.wait())
-    pending = set([signaled_task])
+    pending = {signaled_task}
 
     async def cancel(pending):
         for task in pending:
@@ -1283,21 +1292,23 @@ def read_log(log_filename: pathlib.Path) -> str:
             msg = log.read()
             return msg if len(msg) else "===Empty log output==="
     except FileNotFoundError:
-        return "===Log {} not found===".format(log_filename)
+        return f"===Log {log_filename} not found==="
     except OSError as e:
-        return "===Error reading log {}===".format(e)
+        return f"===Error reading log {e}==="
 
 
 def print_summary(failed_tests, options: argparse.Namespace) -> None:
     if failed_tests:
-        print("The following test(s) have failed: {}".format(
-            palette.path(" ".join([t.name for t in failed_tests]))))
+        print(
+            f'The following test(s) have failed: {palette.path(" ".join([t.name for t in failed_tests]))}'
+        )
         if options.verbose:
             for test in failed_tests:
                 test.print_summary()
                 print("-"*78)
-        print("Summary: {} of the total {} tests failed".format(
-            len(failed_tests), TestSuite.test_count()))
+        print(
+            f"Summary: {len(failed_tests)} of the total {TestSuite.test_count()} tests failed"
+        )
 
 
 def format_unidiff(fromfile: str, tofile: str) -> str:
@@ -1336,8 +1347,11 @@ def write_junit_report(tmpdir: str, mode: str) -> None:
                 continue
             total += 1
             # add the suite name to disambiguate tests named "run"
-            xml_res = ET.SubElement(xml_results, 'testcase',
-                                    name="{}.{}.{}.{}".format(test.suite.name, test.shortname, mode, test.id))
+            xml_res = ET.SubElement(
+                xml_results,
+                'testcase',
+                name=f"{test.suite.name}.{test.shortname}.{mode}.{test.id}",
+            )
             if test.success is True:
                 continue
             failed += 1

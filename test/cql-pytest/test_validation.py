@@ -17,10 +17,10 @@ from util import unique_name, unique_key_int, new_test_table
 
 @pytest.fixture(scope="module")
 def table1(cql, test_keyspace):
-    table = test_keyspace + "." + unique_name()
+    table = f"{test_keyspace}.{unique_name()}"
     cql.execute(f"CREATE TABLE {table} (k int primary key, a ascii, t text)")
     yield table
-    cql.execute("DROP TABLE " + table)
+    cql.execute(f"DROP TABLE {table}")
 
 #############################################################################
 # The following tests verify that inserting an invalid UTF-8 string into a
@@ -377,6 +377,6 @@ def test_validation_blob_as_int_len(cql, test_keyspace):
             assert 0 == getattr(cql.execute(f"SELECT {var} FROM {table} WHERE k = {k}").one(), var)
             with pytest.raises(InvalidRequest, match='is not a valid binary'):
                 cql.execute(f"INSERT INTO {table} (k, {var}) VALUES ({k}, blobAs{typ}(0x{'00'*(length+1)}))")
-            if length - 1 != 0:
+            if length != 1:
                 with pytest.raises(InvalidRequest, match='is not a valid binary'):
                     cql.execute(f"INSERT INTO {table} (k, {var}) VALUES ({k}, blobAs{typ}(0x{'00'*(length-1)}))")

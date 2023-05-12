@@ -45,7 +45,7 @@ def metrics(dynamodb):
     # The Prometheus API is on port 9180, and always http, not https.
     url = re.sub(r':[0-9]+(/|$)', ':9180', url)
     url = re.sub(r'^https:', 'http:', url)
-    url = url + '/metrics'
+    url = f'{url}/metrics'
     resp = requests.get(url)
     if resp.status_code != 200:
         pytest.skip('Metrics port 9180 is not available')
@@ -67,19 +67,19 @@ def get_metric(metrics, name, requested_labels=None, the_metrics=None):
     if not the_metrics:
         the_metrics = get_metrics(metrics)
     total = 0.0
-    lines = re.compile('^'+name+'{.*$', re.MULTILINE)
+    lines = re.compile(f'^{name}' + '{.*$', re.MULTILINE)
     for match in re.findall(lines, the_metrics):
         a = match.split()
-        metric = a[0]
         val = float(a[1])
         # Check if match also matches the requested labels
         if requested_labels:
+            metric = a[0]
             # we know metric begins with name{ and ends with } - the labels
             # are what we have between those
             got_labels = metric[len(name)+1:-1].split(',')
             # Check that every one of the requested labels is in got_labels:
             for k, v in requested_labels.items():
-                if not f'{k}="{v}"' in got_labels:
+                if f'{k}="{v}"' not in got_labels:
                     # No match for requested label, skip this metric (python
                     # doesn't have "continue 2" so let's just set val to 0...
                     val = 0
@@ -244,7 +244,7 @@ def alternator_ttl_period_in_seconds(dynamodb, request):
             KeyConditionExpression='#key=:val',
             ExpressionAttributeNames={'#key': 'name'},
             ExpressionAttributeValues={':val': 'alternator_ttl_period_in_seconds'})
-    if not 'Items' in resp:
+    if 'Items' not in resp:
         pytest.skip('missing TTL feature, skipping test')
     period = float(resp['Items'][0]['value'])
     if period > 1 and not request.config.getoption('runveryslow'):
@@ -266,8 +266,8 @@ def test_ttl_stats(dynamodb, metrics, alternator_ttl_period_in_seconds):
     print(alternator_ttl_period_in_seconds)
     with check_increases_metric(metrics, ['scylla_expiration_scan_passes', 'scylla_expiration_scan_table', 'scylla_expiration_items_deleted']):
         with new_test_table(dynamodb,
-            KeySchema=[ { 'AttributeName': 'p', 'KeyType': 'HASH' }, ],
-            AttributeDefinitions=[ { 'AttributeName': 'p', 'AttributeType': 'S' } ]) as table:
+                    KeySchema=[ { 'AttributeName': 'p', 'KeyType': 'HASH' }, ],
+                    AttributeDefinitions=[ { 'AttributeName': 'p', 'AttributeType': 'S' } ]) as table:
             # Insert one already-expired item, and then enable TTL:
             p0 = random_string()
             table.put_item(Item={'p': p0, 'expiration': int(time.time())-60})
@@ -280,10 +280,10 @@ def test_ttl_stats(dynamodb, metrics, alternator_ttl_period_in_seconds):
             # extremely overloaded test machines.
             start_time = time.time()
             while time.time() < start_time + alternator_ttl_period_in_seconds + 120:
-                if not 'Item' in table.get_item(Key={'p': p0}):
+                if 'Item' not in table.get_item(Key={'p': p0}):
                     break
                 time.sleep(0.1)
-            assert not 'Item' in table.get_item(Key={'p': p0})
+            assert 'Item' not in table.get_item(Key={'p': p0})
 
 # TODO: there are additional metrics which we don't yet test here. At the
 # time of this writing they are: latency histograms

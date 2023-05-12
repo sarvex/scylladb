@@ -32,11 +32,12 @@ def scylla_with_wasm_only(scylla_only, cql, test_keyspace):
 
 @pytest.fixture(scope="module")
 def table1(cql, test_keyspace):
-    table = test_keyspace + "." + unique_name()
-    cql.execute("CREATE TABLE " + table +
-        "(p bigint PRIMARY KEY, p2 bigint, i int, i2 int, s smallint, s2 smallint, t tinyint, t2 tinyint, d double, f float, bl boolean, txt text)")
+    table = f"{test_keyspace}.{unique_name()}"
+    cql.execute(
+        f"CREATE TABLE {table}(p bigint PRIMARY KEY, p2 bigint, i int, i2 int, s smallint, s2 smallint, t tinyint, t2 tinyint, d double, f float, bl boolean, txt text)"
+    )
     yield table
-    cql.execute("DROP TABLE " + table)
+    cql.execute(f"DROP TABLE {table}")
 
 # Test that calling a wasm-based fibonacci function works
 def test_fib(cql, test_keyspace, table1, scylla_with_wasm_only):
@@ -62,15 +63,27 @@ def test_fib(cql, test_keyspace, table1, scylla_with_wasm_only):
     src = f"(input bigint) RETURNS NULL ON NULL INPUT RETURNS bigint LANGUAGE wasm AS '{fib_source}'"
     with new_function(cql, test_keyspace, src, fib_name):
         cql.execute(f"INSERT INTO {table1} (p) VALUES (10)")
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{fib_name}(p) AS result FROM {table} WHERE p = 10")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{fib_name}(p) AS result FROM {table} WHERE p = 10"
+            )
+        )
         assert len(res) == 1 and res[0].result == 55
 
         cql.execute(f"INSERT INTO {table} (p) VALUES (14)")
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{fib_name}(p) AS result FROM {table} WHERE p = 14")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{fib_name}(p) AS result FROM {table} WHERE p = 14"
+            )
+        )
         assert len(res) == 1 and res[0].result == 377
 
         # This function returns null on null values
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{fib_name}(p2) AS result FROM {table} WHERE p = 14")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{fib_name}(p2) AS result FROM {table} WHERE p = 14"
+            )
+        )
         assert len(res) == 1 and res[0].result is None
 
         cql.execute(f"INSERT INTO {table} (p) VALUES (997)")
@@ -136,15 +149,27 @@ def test_fib_called_on_null(cql, test_keyspace, table1, scylla_with_wasm_only):
     src = f"(input bigint) CALLED ON NULL INPUT RETURNS bigint LANGUAGE wasm AS '{fib_source}'"
     with new_function(cql, test_keyspace, src, fib_name):
         cql.execute(f"INSERT INTO {table1} (p) VALUES (3)")
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{fib_name}(p) AS result FROM {table} WHERE p = 3")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{fib_name}(p) AS result FROM {table} WHERE p = 3"
+            )
+        )
         assert len(res) == 1 and res[0].result == 2
 
         cql.execute(f"INSERT INTO {table} (p) VALUES (7)")
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{fib_name}(p) AS result FROM {table} WHERE p = 7")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{fib_name}(p) AS result FROM {table} WHERE p = 7"
+            )
+        )
         assert len(res) == 1 and res[0].result == 13
 
         # Special semantics defined for null input in our function is to return "42"
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{fib_name}(p2) AS result FROM {table} WHERE p = 7")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{fib_name}(p2) AS result FROM {table} WHERE p = 7"
+            )
+        )
         assert len(res) == 1 and res[0].result == 42
 
         cql.execute(f"INSERT INTO {table} (p) VALUES (997)")
@@ -155,7 +180,7 @@ def test_fib_called_on_null(cql, test_keyspace, table1, scylla_with_wasm_only):
 # Test that an infinite loop gets broken out of eventually
 def test_infinite_loop(cql, test_keyspace, table1, scylla_with_wasm_only):
     table = table1
-    inf_loop_name = "inf_loop_" + unique_name()
+    inf_loop_name = f"inf_loop_{unique_name()}"
     inf_loop_source = f"""
 (module
   (type (;0;) (func (param i32) (result i32)))
@@ -186,7 +211,7 @@ def test_infinite_loop(cql, test_keyspace, table1, scylla_with_wasm_only):
 # Test a wasm function which decreases given double by 1
 def test_f64_param(cql, test_keyspace, table1, scylla_with_wasm_only):
     table = table1
-    dec_double_name = "dec_double_" + unique_name()
+    dec_double_name = f"dec_double_{unique_name()}"
     dec_double_source = f"""
 (module
   (type (;0;) (func (param f64) (result f64)))
@@ -207,13 +232,17 @@ def test_f64_param(cql, test_keyspace, table1, scylla_with_wasm_only):
     src = f"(input double) RETURNS NULL ON NULL INPUT RETURNS double LANGUAGE wasm AS '{dec_double_source}'"
     with new_function(cql, test_keyspace, src, dec_double_name):
         cql.execute(f"INSERT INTO {table} (p,d) VALUES (17,17.015625)")
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{dec_double_name}(d) AS result FROM {table} WHERE p = 17")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{dec_double_name}(d) AS result FROM {table} WHERE p = 17"
+            )
+        )
         assert len(res) == 1 and res[0].result == 16.015625
 
 # Test a wasm function which increases given float by 1
 def test_f32_param(cql, test_keyspace, table1, scylla_with_wasm_only):
     table = table1
-    inc_float_name = "inc_float_" + unique_name()
+    inc_float_name = f"inc_float_{unique_name()}"
     inc_float_source = f"""
 (module
   (type (;0;) (func (param f32) (result f32)))
@@ -234,13 +263,17 @@ def test_f32_param(cql, test_keyspace, table1, scylla_with_wasm_only):
     src = f"(input float) RETURNS NULL ON NULL INPUT RETURNS float LANGUAGE wasm AS '{inc_float_source}'"
     with new_function(cql, test_keyspace, src, inc_float_name):
         cql.execute(f"INSERT INTO {table} (p, f) VALUES (121, 121.00390625)")
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{inc_float_name}(f) AS result FROM {table} WHERE p = 121")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{inc_float_name}(f) AS result FROM {table} WHERE p = 121"
+            )
+        )
         assert len(res) == 1 and res[0].result == 122.00390625
 
 # Test a wasm function which operates on booleans
 def test_bool_negate(cql, test_keyspace, table1, scylla_with_wasm_only):
     table = table1
-    negate_name = "negate_" + unique_name()
+    negate_name = f"negate_{unique_name()}"
     negate_source = f"""
 (module
   (type (;0;) (func (param i32) (result i32)))
@@ -261,16 +294,24 @@ def test_bool_negate(cql, test_keyspace, table1, scylla_with_wasm_only):
     with new_function(cql, test_keyspace, src, negate_name):
         cql.execute(f"INSERT INTO {table} (p, bl) VALUES (19, true)")
         cql.execute(f"INSERT INTO {table} (p, bl) VALUES (21, false)")
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{negate_name}(bl) AS result FROM {table} WHERE p = 19")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{negate_name}(bl) AS result FROM {table} WHERE p = 19"
+            )
+        )
         assert len(res) == 1 and res[0].result == False
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{negate_name}(bl) AS result FROM {table} WHERE p = 21")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{negate_name}(bl) AS result FROM {table} WHERE p = 21"
+            )
+        )
         assert len(res) == 1 and res[0].result == True
 
 # Test wasm functions which operate on 8bit and 16bit integers,
 # which are simulated by 32bit integers by wasm anyway
 def test_short_ints(cql, test_keyspace, table1, scylla_with_wasm_only):
     table = table1
-    plus_name = "plus_" + unique_name()
+    plus_name = f"plus_{unique_name()}"
     plus_source = f"""
 (module
   (type (;0;) (func (param i32 i32) (result i32)))
@@ -292,18 +333,34 @@ def test_short_ints(cql, test_keyspace, table1, scylla_with_wasm_only):
     with new_function(cql, test_keyspace, src, plus_name):
         cql.execute(f"INSERT INTO {table} (p, t, t2, s, s2) VALUES (42, 42, 24, 33, 55)")
         cql.execute(f"INSERT INTO {table} (p, t, t2, s, s2) VALUES (43, 120, 112, 32000, 24001)")
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{plus_name}(t, t2) AS result FROM {table} WHERE p = 42")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{plus_name}(t, t2) AS result FROM {table} WHERE p = 42"
+            )
+        )
         assert len(res) == 1 and res[0].result == 66
         # Overflow is fine
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{plus_name}(t, t2) AS result FROM {table} WHERE p = 43")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{plus_name}(t, t2) AS result FROM {table} WHERE p = 43"
+            )
+        )
         assert len(res) == 1 and res[0].result == -24
     # A similar run for 16bit ints - note that the exact same source code is used
     src = f"(input smallint, input2 smallint) RETURNS NULL ON NULL INPUT RETURNS smallint LANGUAGE wasm AS '{plus_source}'"
     with new_function(cql, test_keyspace, src, plus_name):
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{plus_name}(s, s2) AS result FROM {table} WHERE p = 42")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{plus_name}(s, s2) AS result FROM {table} WHERE p = 42"
+            )
+        )
         assert len(res) == 1 and res[0].result == 88
         # Overflow is fine
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{plus_name}(s, s2) AS result FROM {table} WHERE p = 43")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{plus_name}(s, s2) AS result FROM {table} WHERE p = 43"
+            )
+        )
         assert len(res) == 1 and res[0].result == -9535
     # Check whether we can use a different function under the same name
     plus42_source = read_function_from_file('plus42', plus_name)
@@ -311,11 +368,19 @@ def test_short_ints(cql, test_keyspace, table1, scylla_with_wasm_only):
     # Repeat a number of times so the wasm instances get cached on all shards
     with new_function(cql, test_keyspace, src, plus_name):
         for _ in range(100):
-            res = [row for row in cql.execute(f"SELECT {test_keyspace}.{plus_name}(s, s2) AS result FROM {table} WHERE p = 42")]
+            res = list(
+                cql.execute(
+                    f"SELECT {test_keyspace}.{plus_name}(s, s2) AS result FROM {table} WHERE p = 42"
+                )
+            )
             assert len(res) == 1 and res[0].result == 88
     with new_function(cql, test_keyspace, plus42_src, plus_name):
         for _ in range(100):
-            res = [row for row in cql.execute(f"SELECT {test_keyspace}.{plus_name}(s, s2) AS result FROM {table} WHERE p = 42")]
+            res = list(
+                cql.execute(
+                    f"SELECT {test_keyspace}.{plus_name}(s, s2) AS result FROM {table} WHERE p = 42"
+                )
+            )
             assert len(res) == 1 and res[0].result == 88 + 42
 
     # Check whether we can use another function with the same name but different signature
@@ -340,17 +405,25 @@ def test_short_ints(cql, test_keyspace, table1, scylla_with_wasm_only):
     # Repeat a number of times so the wasm instances get cached on all shards
     with new_function(cql, test_keyspace, src, plus_name):
         for _ in range(100):
-            res = [row for row in cql.execute(f"SELECT {test_keyspace}.{plus_name}(s, s2) AS result FROM {table} WHERE p = 42")]
+            res = list(
+                cql.execute(
+                    f"SELECT {test_keyspace}.{plus_name}(s, s2) AS result FROM {table} WHERE p = 42"
+                )
+            )
             assert len(res) == 1 and res[0].result == 88
     with new_function(cql, test_keyspace, plusplus_src, plus_name):
         for _ in range(100):
-            res = [row for row in cql.execute(f"SELECT {test_keyspace}.{plus_name}(s, s, s2) AS result FROM {table} WHERE p = 42")]
+            res = list(
+                cql.execute(
+                    f"SELECT {test_keyspace}.{plus_name}(s, s, s2) AS result FROM {table} WHERE p = 42"
+                )
+            )
             assert len(res) == 1 and res[0].result == 121
 
 # Test that passing a large number of params works fine
 def test_9_params(cql, test_keyspace, table1, scylla_with_wasm_only):
     table = table1
-    sum9_name = "sum9_" + unique_name()
+    sum9_name = f"sum9_{unique_name()}"
     sum9_source = f"""
 (module
   (type (;0;) (func (param i32 i32 i32 i32 i32 i32 i32 i32 i32) (result i32)))
@@ -386,13 +459,17 @@ def test_9_params(cql, test_keyspace, table1, scylla_with_wasm_only):
     src = f"(a int, b int, c int, d int, e int, f int, g int, h int, i int) RETURNS NULL ON NULL INPUT RETURNS int LANGUAGE wasm AS '{sum9_source}'"
     with new_function(cql, test_keyspace, src, sum9_name):
         cql.execute(f"INSERT INTO {table} (p, i, i2) VALUES (777, 1,2)")
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{sum9_name}(i,i2,i2,i,i2,i,i2,i,i2) AS result FROM {table} WHERE p = 777")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{sum9_name}(i,i2,i2,i,i2,i,i2,i,i2) AS result FROM {table} WHERE p = 777"
+            )
+        )
         assert len(res) == 1 and res[0].result == 14
 
 # Test a wasm function which takes 2 arguments - a base and a power - and returns base**power
 def test_pow(cql, test_keyspace, table1, scylla_with_wasm_only):
     table = table1
-    pow_name = "pow_" + unique_name()
+    pow_name = f"pow_{unique_name()}"
     pow_source = f"""
 (module
   (type (;0;) (func (param i32 i32) (result i32)))
@@ -455,13 +532,17 @@ def test_pow(cql, test_keyspace, table1, scylla_with_wasm_only):
     src = f"(base int, pow int) RETURNS NULL ON NULL INPUT RETURNS int LANGUAGE wasm AS '{pow_source}'"
     with new_function(cql, test_keyspace, src, pow_name):
         cql.execute(f"INSERT INTO {table} (p, i, i2) VALUES (311, 3, 11)")
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{pow_name}(i, i2) AS result FROM {table} WHERE p = 311")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{pow_name}(i, i2) AS result FROM {table} WHERE p = 311"
+            )
+        )
         assert len(res) == 1 and res[0].result == 177147
 
 # Test that only compilable input is accepted
 def test_compilable(cql, test_keyspace, table1, scylla_with_wasm_only):
     table = table1
-    wrong_source = f"""
+    wrong_source = """
 Dear wasmtime compiler, please return a function which returns its float argument increased by 1
 """
     with pytest.raises(InvalidRequest, match="Compilation failed"):
@@ -472,7 +553,7 @@ Dear wasmtime compiler, please return a function which returns its float argumen
 # results in an error
 def test_not_exported(cql, test_keyspace, table1, scylla_with_wasm_only):
     table = table1
-    wrong_source = f"""
+    wrong_source = """
 (module
   (type (;0;) (func (param f32) (result f32)))
   (func $i_was_not_exported (type 0) (param f32) (result f32)
@@ -515,7 +596,7 @@ def test_not_a_function(cql, test_keyspace, table1, scylla_with_wasm_only):
 # Test that the function should accept only the correct number and types of params
 def test_validate_params(cql, test_keyspace, table1, scylla_with_wasm_only):
     table = table1
-    inc_float_name = "inc_float_" + unique_name()
+    inc_float_name = f"inc_float_{unique_name()}"
     inc_float_source = f"""
 (module
   (type (;0;) (func (param f32) (result f32)))
@@ -579,13 +660,25 @@ def test_word_double(cql, test_keyspace, table1, scylla_with_wasm_only):
     src = f"(input text) RETURNS NULL ON NULL INPUT RETURNS text LANGUAGE wasm AS '{dbl_source}'"
     with new_function(cql, test_keyspace, src, dbl_name):
         cql.execute(f"INSERT INTO {table1} (p, txt) VALUES (1000, 'doggo')")
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{dbl_name}(txt) AS result FROM {table} WHERE p = 1000")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{dbl_name}(txt) AS result FROM {table} WHERE p = 1000"
+            )
+        )
         assert len(res) == 1 and res[0].result == 'doggodoggo'
 
         cql.execute(f"INSERT INTO {table} (p, txt) VALUES (1001, 'cat42')")
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{dbl_name}(txt) AS result FROM {table} WHERE p = 1001")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{dbl_name}(txt) AS result FROM {table} WHERE p = 1001"
+            )
+        )
         assert len(res) == 1 and res[0].result == 'cat42cat42'
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{dbl_name}(txt) AS result FROM {table} WHERE p IN (1000, 1001)")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{dbl_name}(txt) AS result FROM {table} WHERE p IN (1000, 1001)"
+            )
+        )
         assert len(res) == 2 and (res[0].result == 'cat42cat42' and res[1].result == 'doggodoggo' or res[0].result == 'doggodoggo' and res[1].result == 'cat42cat42')
 
 # Test that calling a wasm-based function works with ABI version 2.
@@ -625,14 +718,18 @@ def test_abi_v2(cql, test_keyspace, table1, scylla_with_wasm_only):
     text_src = f"(input text) RETURNS NULL ON NULL INPUT RETURNS text LANGUAGE wasm AS '{ri_source}'"
     with new_function(cql, test_keyspace, text_src, ri_name):
         cql.execute(f"INSERT INTO {table1} (p, txt) VALUES (2000, 'doggo')")
-        res = [row for row in cql.execute(f"SELECT {test_keyspace}.{ri_name}(txt) AS result FROM {table} WHERE p = 2000")]
+        res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{ri_name}(txt) AS result FROM {table} WHERE p = 2000"
+            )
+        )
         assert len(res) == 1 and res[0].result == 'doggo'
 
 @pytest.fixture(scope="module")
 def metrics(request, scylla_with_wasm_only):
     url = request.config.getoption('host')
     # The Prometheus API is on port 9180, and always http
-    url = 'http://' + url + ':9180/metrics'
+    url = f'http://{url}:9180/metrics'
     resp = requests.get(url)
     if resp.status_code != 200:
         pytest.skip('Metrics port 9180 is not available')
@@ -647,19 +744,19 @@ def get_metric(metrics, name, requested_labels=None, the_metrics=None):
     if not the_metrics:
         the_metrics = get_metrics(metrics)
     total = 0.0
-    lines = re.compile('^'+name+'{.*$', re.MULTILINE)
+    lines = re.compile(f'^{name}' + '{.*$', re.MULTILINE)
     for match in re.findall(lines, the_metrics):
         a = match.split()
-        metric = a[0]
         val = float(a[1])
         # Check if match also matches the requested labels
         if requested_labels:
+            metric = a[0]
             # we know metric begins with name{ and ends with } - the labels
             # are what we have between those
             got_labels = metric[len(name)+1:-1].split(',')
             # Check that every one of the requested labels is in got_labels:
             for k, v in requested_labels.items():
-                if not f'{k}="{v}"' in got_labels:
+                if f'{k}="{v}"' not in got_labels:
                     # No match for requested label, skip this metric (python
                     # doesn't have "continue 2" so let's just set val to 0...
                     val = 0
@@ -980,33 +1077,49 @@ def test_UDA(cql, test_keyspace, table1, scylla_with_wasm_only, metrics):
     div_src = f"(acc tuple<int, int>) CALLED ON NULL INPUT RETURNS float LANGUAGE wasm AS '{div_source}'"
     for i in range(20):
       cql.execute(f"INSERT INTO {table} (p, i, i2) VALUES ({i}, {i}, {i})")
-    with new_function(cql, test_keyspace, sum_src, sum_name), new_function(cql, test_keyspace, div_src, div_name):
+    with (new_function(cql, test_keyspace, sum_src, sum_name), new_function(cql, test_keyspace, div_src, div_name)):
         agg_body = f"(int) SFUNC {sum_name} STYPE tuple<int,int> FINALFUNC {div_name} INITCOND (0,0)"
         hits_before = get_metric(metrics, 'scylla_user_functions_cache_hits')
         with new_aggregate(cql, test_keyspace, agg_body) as custom_avg:
-          custom_res = [row for row in cql.execute(f"SELECT {test_keyspace}.{custom_avg}(i) AS result FROM {table}")]
-          avg_res = [row for row in cql.execute(f"SELECT avg(cast(i as float)) AS result FROM {table}")]
-          assert custom_res == avg_res
-          hits_after = get_metric(metrics, 'scylla_user_functions_cache_hits')
-          assert hits_after - hits_before >= 1
-          misses_before_reuse = get_metric(metrics, 'scylla_user_functions_cache_misses')
-          for i in range(100):
-            custom_res = [row for row in cql.execute(f"SELECT {test_keyspace}.{custom_avg}(i2) AS result FROM {table}")]
-            avg_res = [row for row in cql.execute(f"SELECT avg(cast(i2 as float)) AS result FROM {table}")]
+            custom_res = list(
+                cql.execute(
+                    f"SELECT {test_keyspace}.{custom_avg}(i) AS result FROM {table}"
+                )
+            )
+            avg_res = list(
+                cql.execute(
+                    f"SELECT avg(cast(i as float)) AS result FROM {table}"
+                )
+            )
             assert custom_res == avg_res
+            hits_after = get_metric(metrics, 'scylla_user_functions_cache_hits')
+            assert hits_after - hits_before >= 1
+            misses_before_reuse = get_metric(metrics, 'scylla_user_functions_cache_misses')
+            for _ in range(100):
+                custom_res = list(
+                    cql.execute(
+                        f"SELECT {test_keyspace}.{custom_avg}(i2) AS result FROM {table}"
+                    )
+                )
+                avg_res = list(
+                    cql.execute(
+                        f"SELECT avg(cast(i2 as float)) AS result FROM {table}"
+                    )
+                )
+                assert custom_res == avg_res
 
-          res = [row for row in cql.execute(f"SELECT i2 AS result FROM {table}")]
+            res = list(cql.execute(f"SELECT i2 AS result FROM {table}"))
 
-          misses_after_reuse = get_metric(metrics, 'scylla_user_functions_cache_misses')
-          # Sum of hits and misses should equal the total number of UDF calls, which is one row function call for
-          # each of the table elements and one additional call for the final function, both multiplied by the number of repetitions.
-          assert misses_after_reuse - misses_before_reuse + get_metric(metrics, 'scylla_user_functions_cache_hits') - hits_after == 100 * (1 + len(res))
-          # Each shard has its own cache, so check if at least one shard reuses the cache without excessive missing.
-          # Misses caused by replacing an instance that can no longer be used can be justified, we estimate that this happens
-          # once every 7 calls for row function calls (memory has 2 initial pages, 2 pages are added for 2 arguments, max instance
-          # size = 16 pages) and once every 14 calls for final function calls (1 page is added for each call in this case).
-          # Additionally, 2 misses are expected for each of the 2 shards, for the first calls of row and final functions.
-          assert misses_after_reuse - misses_before_reuse <= 4 + 100 * len(res) / 7 + 100 / 14
+            misses_after_reuse = get_metric(metrics, 'scylla_user_functions_cache_misses')
+            # Sum of hits and misses should equal the total number of UDF calls, which is one row function call for
+            # each of the table elements and one additional call for the final function, both multiplied by the number of repetitions.
+            assert misses_after_reuse - misses_before_reuse + get_metric(metrics, 'scylla_user_functions_cache_hits') - hits_after == 100 * (1 + len(res))
+            # Each shard has its own cache, so check if at least one shard reuses the cache without excessive missing.
+            # Misses caused by replacing an instance that can no longer be used can be justified, we estimate that this happens
+            # once every 7 calls for row function calls (memory has 2 initial pages, 2 pages are added for 2 arguments, max instance
+            # size = 16 pages) and once every 14 calls for final function calls (1 page is added for each call in this case).
+            # Additionally, 2 misses are expected for each of the 2 shards, for the first calls of row and final functions.
+            assert misses_after_reuse - misses_before_reuse <= 4 + 100 * len(res) / 7 + 100 / 14
 
 # Test that wasm instances are removed from the cache when:
 # - a single instance is too big
@@ -1029,7 +1142,7 @@ def test_UDA(cql, test_keyspace, table1, scylla_with_wasm_only, metrics):
 @pytest.mark.skip(reason="slow test, remove skip to try it anyway")
 def test_mem_grow(cql, test_keyspace, table1, scylla_with_wasm_only, metrics):
     table = table1
-    mem_grow_name = "mem_grow_" + unique_name()
+    mem_grow_name = f"mem_grow_{unique_name()}"
     mem_grow_source = f"""
 (module
   (type (;0;) (func (param i32) (result i32)))
@@ -1046,7 +1159,7 @@ def test_mem_grow(cql, test_keyspace, table1, scylla_with_wasm_only, metrics):
     src = f"(pages int) RETURNS NULL ON NULL INPUT RETURNS int LANGUAGE wasm AS '{mem_grow_source}'"
     with new_function(cql, test_keyspace, src, mem_grow_name):
         cql.execute(f"INSERT INTO {table} (p, i) VALUES (8, 8)")
-        for i in range(512):
+        for _ in range(512):
             cql.execute(f"SELECT {test_keyspace}.{mem_grow_name}(i) AS result FROM {table} WHERE p = 8")
             # We grow the memory by 8 pages, each page is 64KiB, so in total we'll grow 512*8*64*1024=256MiB
             # The default memory limit is 128MiB, so assert we're staying under that anyway
@@ -1064,7 +1177,11 @@ def test_mem_grow(cql, test_keyspace, table1, scylla_with_wasm_only, metrics):
 
         cql.execute(f"INSERT INTO {table} (p, i) VALUES (100, 100)")
         # A memory of 100+ pages is too big for an instance in the cache, it is rejected
-        map_res = [row for row in cql.execute(f"SELECT {test_keyspace}.{mem_grow_name}(i) AS result FROM {table} WHERE p = 100")]
+        map_res = list(
+            cql.execute(
+                f"SELECT {test_keyspace}.{mem_grow_name}(i) AS result FROM {table} WHERE p = 100"
+            )
+        )
         assert len(map_res) == 1 and map_res[0].result == -1
 
 # Test that all wasm instance entries are removed from the cache when the correlating UDF is dropped,
@@ -1072,7 +1189,7 @@ def test_mem_grow(cql, test_keyspace, table1, scylla_with_wasm_only, metrics):
 # The first UDF used returns the input integer.
 def test_drop(cql, test_keyspace, table1, scylla_with_wasm_only, metrics):
     table = table1
-    ret_name = "ret_" + unique_name()
+    ret_name = f"ret_{unique_name()}"
     ret_source = f"""
 (module
   (type (;0;) (func (param i64) (result i64)))
@@ -1088,7 +1205,7 @@ def test_drop(cql, test_keyspace, table1, scylla_with_wasm_only, metrics):
     src = f"(input bigint) RETURNS NULL ON NULL INPUT RETURNS bigint LANGUAGE wasm AS '{ret_source}'"
     cql.execute(f"INSERT INTO {table} (p) VALUES (42)")
     for _ in range(10):
-        ret_name = "ret_" + unique_name()
+        ret_name = f"ret_{unique_name()}"
         with new_function(cql, test_keyspace, src.replace('ret_name', ret_name), ret_name):
             cql.execute(f"SELECT {test_keyspace}.{ret_name}(p) AS result FROM {table} WHERE p = 42")
             assert(get_metric(metrics, 'scylla_user_functions_cache_instace_count_any') > 0)

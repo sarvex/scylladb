@@ -14,24 +14,24 @@ from util import unique_name, unique_key_string
 
 @pytest.fixture(scope="module")
 def table1(cql, test_keyspace):
-    table = test_keyspace + "." + unique_name()
+    table = f"{test_keyspace}.{unique_name()}"
     cql.execute(f"CREATE TABLE {table} (p text, c text, v text, i int, s set<int>, m map<int, int>, primary key (p, c))")
     yield table
-    cql.execute("DROP TABLE " + table)
+    cql.execute(f"DROP TABLE {table}")
 
 @pytest.fixture(scope="module")
 def table2(cql, test_keyspace):
-    table = test_keyspace + "." + unique_name()
+    table = f"{test_keyspace}.{unique_name()}"
     cql.execute(f"CREATE TABLE {table} (id text, a int, b int, c list<int>, PRIMARY KEY((id),a,b))")
     yield table
-    cql.execute("DROP TABLE " + table)
+    cql.execute(f"DROP TABLE {table}")
 
 @pytest.fixture(scope="module")
 def table3(cql, test_keyspace):
-    table = test_keyspace + "." + unique_name()
+    table = f"{test_keyspace}.{unique_name()}"
     cql.execute(f"CREATE TABLE {table} (id1 text, id2 text, a int, c list<int>, PRIMARY KEY((id1,id2),a))")
     yield table
-    cql.execute("DROP TABLE " + table)
+    cql.execute(f"DROP TABLE {table}")
 
 # An item cannot be inserted without a key. Verify that before we get into
 # the really interesting test below - trying to pass "null" as the value of
@@ -152,16 +152,37 @@ def test_insert_with_list_column_and_missing_partition_key_part(cql, table3):
 # Tests handling of "key_column in ?" where ? is bound to null.
 # Reproduces issue #8265.
 def test_primary_key_in_null(scylla_only, cql, table1):
-    assert list(cql.execute(cql.prepare(f"SELECT p FROM {table1} WHERE p IN ?"), [None])) == []
-    assert list(cql.execute(cql.prepare(f"SELECT p FROM {table1} WHERE p='' AND c IN ?"), [None])) == []
-    assert list(cql.execute(cql.prepare(f"SELECT p FROM {table1} WHERE p='' AND (c) IN ?"), [None])) == []
+    assert not list(
+        cql.execute(
+            cql.prepare(f"SELECT p FROM {table1} WHERE p IN ?"), [None]
+        )
+    )
+    assert not list(
+        cql.execute(
+            cql.prepare(f"SELECT p FROM {table1} WHERE p='' AND c IN ?"),
+            [None],
+        )
+    )
+    assert not list(
+        cql.execute(
+            cql.prepare(f"SELECT p FROM {table1} WHERE p='' AND (c) IN ?"),
+            [None],
+        )
+    )
 
 # Cassandra says "IN predicates on non-primary-key columns (v) is not yet supported".
 def test_regular_column_in_null(scylla_only, cql, table1):
     '''Tests handling of "regular_column in ?" where ? is bound to null.'''
     # Without any rows in the table, SELECT will shortcircuit before evaluating the WHERE clause.
     cql.execute(f"INSERT INTO {table1} (p,c) VALUES ('p', 'c')")
-    assert list(cql.execute(cql.prepare(f"SELECT v FROM {table1} WHERE v IN ? ALLOW FILTERING"), [None])) == []
+    assert not list(
+        cql.execute(
+            cql.prepare(
+                f"SELECT v FROM {table1} WHERE v IN ? ALLOW FILTERING"
+            ),
+            [None],
+        )
+    )
 
 # Though nonsensical, this operation is allowed by Cassandra.  Ensure we allow it, too.
 def test_delete_impossible_clustering_range(cql, table1):
@@ -201,7 +222,11 @@ def test_filtering_eq_null(cassandra_bug, cql, table1):
     cql.execute(f"INSERT INTO {table1} (p,c) VALUES ('{p}', '3')")
     # As explained above, none of the above-inserted rows should match -
     # not even the one with an unset v:
-    assert list(cql.execute(f"SELECT c FROM {table1} WHERE p='{p}' AND v=NULL ALLOW FILTERING")) == []
+    assert not list(
+        cql.execute(
+            f"SELECT c FROM {table1} WHERE p='{p}' AND v=NULL ALLOW FILTERING"
+        )
+    )
 
 # Similarly, inequality restrictions with NULL, like > NULL, also match
 # nothing.
@@ -210,10 +235,26 @@ def test_filtering_inequality_null(cassandra_bug, cql, table1):
     cql.execute(f"INSERT INTO {table1} (p,c,i) VALUES ('{p}', '1', 7)")
     cql.execute(f"INSERT INTO {table1} (p,c,i) VALUES ('{p}', '2', -3)")
     cql.execute(f"INSERT INTO {table1} (p,c) VALUES ('{p}', '3')")
-    assert list(cql.execute(f"SELECT c FROM {table1} WHERE p='{p}' AND i>NULL ALLOW FILTERING")) == []
-    assert list(cql.execute(f"SELECT c FROM {table1} WHERE p='{p}' AND i>=NULL ALLOW FILTERING")) == []
-    assert list(cql.execute(f"SELECT c FROM {table1} WHERE p='{p}' AND i<NULL ALLOW FILTERING")) == []
-    assert list(cql.execute(f"SELECT c FROM {table1} WHERE p='{p}' AND i<=NULL ALLOW FILTERING")) == []
+    assert not list(
+        cql.execute(
+            f"SELECT c FROM {table1} WHERE p='{p}' AND i>NULL ALLOW FILTERING"
+        )
+    )
+    assert not list(
+        cql.execute(
+            f"SELECT c FROM {table1} WHERE p='{p}' AND i>=NULL ALLOW FILTERING"
+        )
+    )
+    assert not list(
+        cql.execute(
+            f"SELECT c FROM {table1} WHERE p='{p}' AND i<NULL ALLOW FILTERING"
+        )
+    )
+    assert not list(
+        cql.execute(
+            f"SELECT c FROM {table1} WHERE p='{p}' AND i<=NULL ALLOW FILTERING"
+        )
+    )
 
 # Similarly, CONTAINS restriction with NULL should also match nothing.
 # Reproduces #10359.
@@ -222,7 +263,11 @@ def test_filtering_contains_null(cassandra_bug, cql, table1):
     cql.execute(f"INSERT INTO {table1} (p,c,s) VALUES ('{p}', '1', {{1, 2}})")
     cql.execute(f"INSERT INTO {table1} (p,c,s) VALUES ('{p}', '2', {{3, 4}})")
     cql.execute(f"INSERT INTO {table1} (p,c) VALUES ('{p}', '3')")
-    assert list(cql.execute(f"SELECT c FROM {table1} WHERE p='{p}' AND s CONTAINS NULL ALLOW FILTERING")) == []
+    assert not list(
+        cql.execute(
+            f"SELECT c FROM {table1} WHERE p='{p}' AND s CONTAINS NULL ALLOW FILTERING"
+        )
+    )
 
 # Similarly, CONTAINS KEY restriction with NULL should also match nothing.
 # Reproduces #10359.
@@ -231,7 +276,11 @@ def test_filtering_contains_key_null(cassandra_bug, cql, table1):
     cql.execute(f"INSERT INTO {table1} (p,c,m) VALUES ('{p}', '1', {{1: 2}})")
     cql.execute(f"INSERT INTO {table1} (p,c,m) VALUES ('{p}', '2', {{3: 4}})")
     cql.execute(f"INSERT INTO {table1} (p,c) VALUES ('{p}', '3')")
-    assert list(cql.execute(f"SELECT c FROM {table1} WHERE p='{p}' AND m CONTAINS KEY NULL ALLOW FILTERING")) == []
+    assert not list(
+        cql.execute(
+            f"SELECT c FROM {table1} WHERE p='{p}' AND m CONTAINS KEY NULL ALLOW FILTERING"
+        )
+    )
 
 # The above tests test_filtering_eq_null and test_filtering_inequality_null
 # have WHERE x=NULL or x>NULL where "x" is a regular column. Such a
@@ -272,5 +321,16 @@ def test_filtering_null_comparison_no_filtering(cql, table1):
 # test_filtering.py::test_filtering_null_map_with_subscript so this test
 # should eventually be deleted.
 def test_map_subscript_null(cql, table1, cassandra_bug):
-    assert list(cql.execute(f"SELECT p FROM {table1} WHERE m[null] = 3 ALLOW FILTERING")) == []
-    assert list(cql.execute(cql.prepare(f"SELECT p FROM {table1} WHERE m[?] = 3 ALLOW FILTERING"), [None])) == []
+    assert not list(
+        cql.execute(
+            f"SELECT p FROM {table1} WHERE m[null] = 3 ALLOW FILTERING"
+        )
+    )
+    assert not list(
+        cql.execute(
+            cql.prepare(
+                f"SELECT p FROM {table1} WHERE m[?] = 3 ALLOW FILTERING"
+            ),
+            [None],
+        )
+    )

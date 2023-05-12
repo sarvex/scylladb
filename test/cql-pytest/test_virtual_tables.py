@@ -12,7 +12,11 @@ def test_snapshots_table(scylla_only, cql, test_keyspace):
     with util.new_test_table(cql, test_keyspace, 'pk int PRIMARY KEY, v int') as table:
         cql.execute(f"INSERT INTO {table} (pk, v) VALUES (0, 0)")
         nodetool.take_snapshot(cql, table, 'my_tag', False)
-        res = list(cql.execute(f"SELECT keyspace_name, table_name, snapshot_name, live, total FROM system.snapshots"))
+        res = list(
+            cql.execute(
+                "SELECT keyspace_name, table_name, snapshot_name, live, total FROM system.snapshots"
+            )
+        )
         assert len(res) == 1
         ks, tbl = table.split('.')
         assert res[0][0] == ks
@@ -64,9 +68,7 @@ def test_versions(scylla_only, cql):
 def test_system_config_read(scylla_only, cql):
     # All rows should have the columns name, source, type and value:
     rows = list(cql.execute("SELECT name, source, type, value FROM system.config"))
-    values = dict()
-    for row in rows:
-        values[row.name] = row.value
+    values = {row.name: row.value for row in rows}
     # Check that experimental_features exists and makes sense.
     # It needs to be a JSON-formatted strings, and the strings need to be
     # ASCII feature names - not binary garbage as it was in #10047,
